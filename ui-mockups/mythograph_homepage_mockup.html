@@ -1,0 +1,111 @@
+
+<link href="https://cdn.jsdelivr.net/npm/@fontsource/cinzel/index.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/@fontsource/lora/index.css" rel="stylesheet">
+
+<h2 class="sr-only">Mythograph homepage mockup: animated knowledge graph as hero with floating search bar and featured connections strip</h2>
+
+<div style="background:#C6C2BC;border-radius:14px;padding:26px 20px 20px;position:relative">
+  <div style="position:absolute;top:9px;left:17px;display:flex;gap:5px">
+    <div style="width:10px;height:10px;border-radius:50%;background:#FF5F57"></div>
+    <div style="width:10px;height:10px;border-radius:50%;background:#FEBC2E"></div>
+    <div style="width:10px;height:10px;border-radius:50%;background:#28C840"></div>
+  </div>
+  <div style="background:rgba(0,0,0,0.12);border-radius:4px;height:18px;margin:0 90px 8px;display:flex;align-items:center;justify-content:center">
+    <span style="font-family:'Lora',Georgia,serif;font-size:9px;color:rgba(0,0,0,0.3)">mythograph.io</span>
+  </div>
+
+  <div style="background:#0C0A08;border-radius:8px;height:428px;position:relative;overflow:hidden">
+    <canvas id="mc" style="position:absolute;top:0;left:0;width:100%;height:100%"></canvas>
+
+    <div style="position:relative;z-index:2;display:flex;align-items:center;justify-content:space-between;padding:13px 22px;border-bottom:0.5px solid rgba(255,255,255,0.07)">
+      <span style="font-family:'Cinzel',Georgia,serif;font-size:14px;color:#F5F0E8;letter-spacing:0.24em">MYTHOGRAPH</span>
+      <div style="display:flex;gap:20px">
+        <span style="font-family:'Lora',Georgia,serif;font-size:12px;color:rgba(255,255,255,0.38)">Graph</span>
+        <span style="font-family:'Lora',Georgia,serif;font-size:12px;color:rgba(255,255,255,0.38)">Encyclopedia</span>
+        <span style="font-family:'Lora',Georgia,serif;font-size:12px;color:rgba(255,255,255,0.38)">Sources</span>
+        <span style="font-family:'Lora',Georgia,serif;font-size:12px;color:rgba(255,255,255,0.38)">Search</span>
+      </div>
+    </div>
+
+    <div style="position:relative;z-index:2;text-align:center;padding-top:92px">
+      <p style="font-family:'Cinzel',Georgia,serif;font-size:9.5px;letter-spacing:0.3em;color:rgba(74,124,111,0.78);margin:0 0 18px">COMPARATIVE MYTHOLOGY · SYMBOLIC ANALYSIS</p>
+      <div style="display:inline-flex;align-items:center;gap:10px;background:rgba(245,240,232,0.07);border:0.5px solid rgba(245,240,232,0.2);border-radius:5px;padding:10px 18px;min-width:320px">
+        <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden="true"><circle cx="5.5" cy="5.5" r="4" stroke="rgba(255,255,255,0.35)" stroke-width="1.1"/><line x1="8.2" y1="8.2" x2="11" y2="11" stroke="rgba(255,255,255,0.35)" stroke-width="1.1" stroke-linecap="round"/></svg>
+        <span style="font-family:'Lora',Georgia,serif;font-size:13px;color:rgba(255,255,255,0.3)">Search symbols, figures, narratives…</span>
+      </div>
+    </div>
+
+    <div style="position:absolute;bottom:0;left:0;right:0;z-index:2;padding:11px 18px 13px;border-top:0.5px solid rgba(255,255,255,0.06)">
+      <p style="font-family:'Cinzel',Georgia,serif;font-size:7.5px;letter-spacing:0.22em;color:rgba(255,255,255,0.22);margin:0 0 8px">FEATURED CONNECTIONS</p>
+      <div style="display:flex;gap:8px">
+        <div style="flex:1;background:rgba(74,124,111,0.1);border:0.5px solid rgba(74,124,111,0.26);border-radius:4px;padding:7px 10px">
+          <p style="font-family:'Cinzel',Georgia,serif;font-size:7px;color:rgba(74,124,111,0.88);letter-spacing:0.09em;margin:0 0 3px">FIRE → PROMETHEUS → YAHWEH</p>
+          <p style="font-family:'Lora',Georgia,serif;font-size:10px;color:rgba(255,255,255,0.38);margin:0">The theft and gift of divine flame</p>
+        </div>
+        <div style="flex:1;background:rgba(160,82,45,0.1);border:0.5px solid rgba(160,82,45,0.26);border-radius:4px;padding:7px 10px">
+          <p style="font-family:'Cinzel',Georgia,serif;font-size:7px;color:rgba(160,82,45,0.88);letter-spacing:0.09em;margin:0 0 3px">DYING GOD → HOLLYWOOD</p>
+          <p style="font-family:'Lora',Georgia,serif;font-size:10px;color:rgba(255,255,255,0.38);margin:0">Resurrection tropes in modern film</p>
+        </div>
+        <div style="flex:1;background:rgba(107,95,160,0.1);border:0.5px solid rgba(107,95,160,0.26);border-radius:4px;padding:7px 10px">
+          <p style="font-family:'Cinzel',Georgia,serif;font-size:7px;color:rgba(107,95,160,0.88);letter-spacing:0.09em;margin:0 0 3px">SERPENT → EDEN → WISDOM</p>
+          <p style="font-family:'Lora',Georgia,serif;font-size:10px;color:rgba(255,255,255,0.38);margin:0">Forbidden knowledge across cultures</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const c = document.getElementById('mc');
+  if(!c) return;
+  const ctx = c.getContext('2d');
+  function resize(){ c.width = c.offsetWidth; c.height = c.offsetHeight; }
+  resize();
+
+  const nodes = [
+    {px:.11,py:.38,r:20,col:'rgba(74,124,111,0.88)',glow:'rgba(74,124,111,0.12)',lbl:'FIRE'},
+    {px:.25,py:.27,r:17,col:'rgba(160,82,45,0.88)',glow:'rgba(160,82,45,0.12)',lbl:'PROMETHEUS'},
+    {px:.41,py:.43,r:15,col:'rgba(160,82,45,0.82)',glow:'rgba(160,82,45,0.1)',lbl:'YAHWEH'},
+    {px:.29,py:.60,r:11,col:'rgba(107,95,160,0.85)',glow:'rgba(107,95,160,0.1)',lbl:'THEFT'},
+    {px:.55,py:.30,r:10,col:'rgba(74,124,111,0.72)',glow:'rgba(74,124,111,0.09)',lbl:'EDEN'},
+    {px:.59,py:.54,r:8,col:'rgba(74,124,111,0.65)',glow:'rgba(74,124,111,0.08)',lbl:'SERPENT'},
+    {px:.74,py:.36,r:18,col:'rgba(107,95,160,0.88)',glow:'rgba(107,95,160,0.12)',lbl:'HERO'},
+    {px:.84,py:.55,r:9,col:'rgba(74,124,111,0.6)',glow:'rgba(74,124,111,0.08)',lbl:'OLYMPUS'},
+    {px:.69,py:.60,r:12,col:'rgba(107,95,160,0.75)',glow:'rgba(107,95,160,0.09)',lbl:'REBIRTH'},
+    {px:.17,py:.70,r:6,col:'rgba(160,82,45,0.55)',glow:'rgba(160,82,45,0.07)',lbl:'ZEUS'},
+    {px:.47,py:.68,r:7,col:'rgba(160,82,45,0.6)',glow:'rgba(160,82,45,0.07)',lbl:'LUCIFER'},
+    {px:.87,py:.24,r:7,col:'rgba(74,124,111,0.5)',glow:'rgba(74,124,111,0.06)',lbl:'LIGHT'},
+  ];
+  const edges=[[0,1],[1,2],[0,3],[1,3],[2,4],[4,5],[2,6],[6,7],[6,8],[3,9],[5,10],[7,11],[8,6],[2,10]];
+  let t=0;
+
+  function draw(){
+    const w=c.width,h=c.height;
+    ctx.clearRect(0,0,w,h);
+    t+=0.003;
+    const pos=nodes.map((n,i)=>({
+      x:(n.px+Math.sin(t*.8+i*1.4)*.012)*w,
+      y:(n.py+Math.cos(t*.6+i*1.1)*.008)*h
+    }));
+    edges.forEach(([a,b])=>{
+      ctx.beginPath();ctx.moveTo(pos[a].x,pos[a].y);ctx.lineTo(pos[b].x,pos[b].y);
+      ctx.strokeStyle='rgba(255,255,255,0.05)';ctx.lineWidth=0.6;ctx.stroke();
+    });
+    nodes.forEach((n,i)=>{
+      const {x,y}=pos[i];
+      ctx.beginPath();ctx.arc(x,y,n.r+5,0,Math.PI*2);ctx.fillStyle=n.glow;ctx.fill();
+      ctx.beginPath();ctx.arc(x,y,n.r,0,Math.PI*2);ctx.fillStyle=n.col;ctx.fill();
+      if(n.r>=9){
+        ctx.fillStyle='rgba(255,255,255,0.82)';
+        ctx.font=`${Math.max(5.5,n.r*.42)}px 'Cinzel',Georgia,serif`;
+        ctx.textAlign='center';ctx.textBaseline='middle';
+        ctx.fillText(n.lbl,x,y);
+      }
+    });
+    requestAnimationFrame(draw);
+  }
+  draw();
+  window.addEventListener('resize',resize);
+})();
+</script>
