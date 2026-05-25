@@ -1,0 +1,16 @@
+export const ROUTES = {
+  GRAPH: '/',
+  ENCYCLOPEDIA: '/encyclopedia',
+  ENTITY: '/entity/:slug',
+  CLAIM: '/claim/:id',
+  SOURCES: '/sources',
+  SOURCE_DETAIL: '/sources/:id',
+  SEARCH: '/search',
+  ADMIN_LOGIN: '/admin/login',
+  ADMIN_DASHBOARD: '/admin',
+  ADMIN_SOURCES: '/admin/sources',
+  ADMIN_SOURCE_NEW: '/admin/sources/new',
+  ADMIN_REVIEW: '/admin/review',
+  ADMIN_ENTITIES: '/admin/entities',
+  ADMIN_SETTINGS: '/admin/settings',
+} as const

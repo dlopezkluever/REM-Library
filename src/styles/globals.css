@@ -1,0 +1,56 @@
+@import '@fontsource/cinzel/400.css';
+@import '@fontsource/cinzel/700.css';
+@import '@fontsource/lora/400.css';
+@import '@fontsource/lora/400-italic.css';
+@import '@fontsource/lora/600.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 245 240 232; /* Stone */
+    --foreground: 28 25 23; /* Ink */
+    --primary: 74 124 111; /* Verdigris */
+    --primary-foreground: 245 240 232;
+    --secondary: 245 240 232;
+    --secondary-foreground: 28 25 23;
+    --muted: 245 240 232;
+    --muted-foreground: 136 136 136;
+    --accent: 74 124 111;
+    --accent-foreground: 245 240 232;
+    --destructive: 160 82 45; /* Terracotta */
+    --destructive-foreground: 245 240 232;
+    --border: 0 0 0;
+    --input: 0 0 0;
+    --ring: 74 124 111;
+    --radius: 0.25rem;
+  }
+
+  .dark {
+    --background: 15 13 11; /* Charcoal */
+    --foreground: 245 240 232;
+    --primary: 74 124 111;
+    --primary-foreground: 245 240 232;
+    --secondary: 15 13 11;
+    --secondary-foreground: 245 240 232;
+    --muted: 15 13 11;
+    --muted-foreground: 136 136 136;
+    --accent: 74 124 111;
+    --accent-foreground: 245 240 232;
+    --destructive: 160 82 45;
+    --destructive-foreground: 245 240 232;
+    --border: 255 255 255;
+    --input: 255 255 255;
+    --ring: 74 124 111;
+  }
+
+  * {
+    border-color: rgb(var(--border) / 0.07);
+  }
+
+  body {
+    @apply bg-stone text-ink font-body;
+  }
+}
