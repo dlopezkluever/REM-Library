@@ -1,0 +1,2 @@
+-- Development seed data
+-- Run after migrations to populate the local database with test data
