@@ -7,7 +7,7 @@ export const ROUTES = {
   SOURCE_DETAIL: '/sources/:id',
   SEARCH: '/search',
   ADMIN_LOGIN: '/admin/login',
-  ADMIN_DASHBOARD: '/admin',
+  ADMIN_DASHBOARD: '/admin/dashboard',
   ADMIN_SOURCES: '/admin/sources',
   ADMIN_SOURCE_NEW: '/admin/sources/new',
   ADMIN_REVIEW: '/admin/review',
