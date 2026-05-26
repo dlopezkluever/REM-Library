@@ -1,4 +1,5 @@
-import { createBrowserRouter } from 'react-router-dom'
+import { createBrowserRouter, Navigate } from 'react-router-dom'
+import { RequireAdmin } from '@/components/auth/RequireAdmin'
 import { AppShell } from '@/components/layout/AppShell'
 import { ContentShell } from '@/components/layout/ContentShell'
 import { AdminShell } from '@/components/layout/AdminShell'
@@ -38,14 +39,20 @@ export const router = createBrowserRouter([
     element: <AdminLoginPage />,
   },
   {
-    element: <AdminShell />,
+    element: <RequireAdmin />,
     children: [
-      { path: '/admin', element: <AdminDashboardPage /> },
-      { path: '/admin/sources', element: <AdminSourceListPage /> },
-      { path: '/admin/sources/new', element: <AdminSourceNewPage /> },
-      { path: '/admin/review', element: <AdminReviewQueuePage /> },
-      { path: '/admin/entities', element: <AdminEntityManagerPage /> },
-      { path: '/admin/settings', element: <AdminSettingsPage /> },
+      {
+        element: <AdminShell />,
+        children: [
+          { path: '/admin', element: <Navigate to="/admin/dashboard" replace /> },
+          { path: '/admin/dashboard', element: <AdminDashboardPage /> },
+          { path: '/admin/sources', element: <AdminSourceListPage /> },
+          { path: '/admin/sources/new', element: <AdminSourceNewPage /> },
+          { path: '/admin/review', element: <AdminReviewQueuePage /> },
+          { path: '/admin/entities', element: <AdminEntityManagerPage /> },
+          { path: '/admin/settings', element: <AdminSettingsPage /> },
+        ],
+      },
     ],
   },
 ])
