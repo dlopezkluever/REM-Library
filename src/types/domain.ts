@@ -51,6 +51,14 @@ export interface Relationship {
   created_at: string
 }
 
+export interface FeaturedConnection {
+  id: string
+  title: string
+  description: string
+  entity_color: string
+  created_at: string
+}
+
 export interface Source {
   id: string
   title: string
