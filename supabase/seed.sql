@@ -331,3 +331,30 @@ values (
   'pending'
 )
 on conflict (id) do nothing;
+
+insert into public.featured_connections (
+  id,
+  title,
+  description,
+  entity_color
+)
+values
+  (
+    '80000000-0000-0000-0000-000000000001',
+    'FIRE -> PROMETHEUS -> YAHWEH',
+    'A path tracing divine fire as transmitted, stolen, and embodied across traditions.',
+    '#4A7C6F'
+  ),
+  (
+    '80000000-0000-0000-0000-000000000002',
+    'DYING GOD -> HOLLYWOOD',
+    'A recurring pattern of sacrifice, return, and cultural retelling in modern mythmaking.',
+    '#6B5FA0'
+  ),
+  (
+    '80000000-0000-0000-0000-000000000003',
+    'SERPENT -> EDEN -> WISDOM',
+    'A symbolic chain connecting the serpent motif to knowledge, boundary crossing, and initiation.',
+    '#A0522D'
+  )
+on conflict (id) do nothing;
