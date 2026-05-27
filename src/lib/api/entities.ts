@@ -1,5 +1,7 @@
 import { supabase } from '@/lib/supabase/client'
 import type { Tables } from '@/types/database'
+import type { EntityPositionUpdate } from '@/lib/graph/types'
+import type { EntityType } from '@/types/domain'
 
 export type EntityRow = Tables<'entities'>
 export type RelationshipRow = Tables<'relationships'>
@@ -11,18 +13,38 @@ export interface EntityNeighborhood {
 
 const unique = (values: string[]) => Array.from(new Set(values))
 
-export const getPublishedEntities = async () => {
-  const { data, error } = await supabase
-    .from('entities')
-    .select('*')
-    .eq('status', 'published')
-    .order('name')
+interface PublishedEntityOptions {
+  search?: string
+  type?: EntityType
+  limit?: number
+}
+
+export const getPublishedEntities = async (options: PublishedEntityOptions = {}) => {
+  let query = supabase.from('entities').select('*').eq('status', 'published').order('name')
+
+  if (options.search?.trim()) {
+    query = query.ilike('name', `%${options.search.trim()}%`)
+  }
+
+  if (options.type) {
+    query = query.eq('type', options.type)
+  }
+
+  if (options.limit) {
+    query = query.limit(options.limit)
+  }
+
+  const { data, error } = await query
 
   if (error) {
     throw error
   }
 
   return data
+}
+
+export const getPublishedCultureEntities = async () => {
+  return getPublishedEntities({ type: 'culture' })
 }
 
 export const getEntityBySlug = async (slug: string) => {
@@ -86,7 +108,10 @@ export const getEntityNeighborhood = async (
       ).values()
     )
     entityIds = unique(
-      relationships.flatMap((relationship) => [relationship.from_entity_id, relationship.to_entity_id])
+      relationships.flatMap((relationship) => [
+        relationship.from_entity_id,
+        relationship.to_entity_id,
+      ])
     )
   }
 
@@ -108,8 +133,23 @@ export const getEntityNeighborhood = async (
   const visibleEntityIds = new Set(entities.map((entity) => entity.id))
   const visibleRelationships = relationships.filter(
     (relationship) =>
-      visibleEntityIds.has(relationship.from_entity_id) && visibleEntityIds.has(relationship.to_entity_id)
+      visibleEntityIds.has(relationship.from_entity_id) &&
+      visibleEntityIds.has(relationship.to_entity_id)
   )
 
   return { entities, relationships: visibleRelationships }
+}
+
+export const persistEntityPositions = async (positions: EntityPositionUpdate[]) => {
+  await Promise.all(
+    positions.map((position) =>
+      supabase
+        .from('entities')
+        .update({
+          position_x: position.position_x,
+          position_y: position.position_y,
+        })
+        .eq('id', position.id)
+    )
+  )
 }
