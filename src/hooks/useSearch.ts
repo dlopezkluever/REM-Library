@@ -1,12 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { searchAll } from '@/lib/api/search'
+import { EMPTY_SEARCH_RESULTS } from '@/lib/searchResults'
 import type { SearchResults } from '@/types/domain'
-
-const EMPTY_RESULTS: SearchResults = {
-  claims: [],
-  entities: [],
-  sources: [],
-}
 
 interface UseSearchOptions {
   debounceMs?: number
@@ -14,7 +9,7 @@ interface UseSearchOptions {
 
 export const useSearch = (options: UseSearchOptions = {}) => {
   const [query, setQuery] = useState('')
-  const [results, setResults] = useState<SearchResults>(EMPTY_RESULTS)
+  const [results, setResults] = useState<SearchResults>(EMPTY_SEARCH_RESULTS)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<Error | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
@@ -47,7 +42,7 @@ export const useSearch = (options: UseSearchOptions = {}) => {
           }
 
           setError(nextError instanceof Error ? nextError : new Error('Search failed.'))
-          setResults(EMPTY_RESULTS)
+          setResults(EMPTY_SEARCH_RESULTS)
         })
         .finally(() => {
           if (!controller.signal.aborted) {
@@ -67,7 +62,7 @@ export const useSearch = (options: UseSearchOptions = {}) => {
 
     if (!nextQuery.trim()) {
       abortControllerRef.current?.abort()
-      setResults(EMPTY_RESULTS)
+      setResults(EMPTY_SEARCH_RESULTS)
       setIsLoading(false)
       setError(null)
     }
@@ -79,7 +74,7 @@ export const useSearch = (options: UseSearchOptions = {}) => {
     error: hasQuery ? error : null,
     isLoading: hasQuery ? isLoading : false,
     query,
-    results: hasQuery ? results : EMPTY_RESULTS,
+    results: hasQuery ? results : EMPTY_SEARCH_RESULTS,
     setQuery: updateQuery,
   }
 }

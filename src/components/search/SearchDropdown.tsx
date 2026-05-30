@@ -1,6 +1,11 @@
 import { Link } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
-import { flattenSearchResults, hasSearchResults, type SearchResultItem } from '@/lib/searchResults'
+import {
+  flattenSearchResults,
+  hasSearchResults,
+  stripSearchHeadlineTags,
+  type SearchResultItem,
+} from '@/lib/searchResults'
 import { cn } from '@/lib/utils'
 import type { SearchResults } from '@/types/domain'
 
@@ -14,8 +19,6 @@ interface SearchDropdownProps {
   onActiveIndexChange: (index: number) => void
   onSelect: (item: SearchResultItem) => void
 }
-
-const stripHeadlineTags = (value: string) => value.replace(/<\/?b>/g, '')
 
 export const SearchDropdown = ({
   activeIndex,
@@ -115,7 +118,7 @@ export const SearchDropdown = ({
                     isDark ? 'text-white/42' : 'text-[#777]'
                   )}
                 >
-                  {stripHeadlineTags(item.result.matchedExcerpt)}
+                  {stripSearchHeadlineTags(item.result.matchedExcerpt)}
                 </span>
               </span>
               <Badge className="shrink-0" variant="outline">
