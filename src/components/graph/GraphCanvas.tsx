@@ -21,7 +21,8 @@ import type { EntityType } from '@/types/domain'
 
 interface GraphCanvasProps {
   focusedNodeId: string | null
-  onFocusedNodeSettled: () => void
+  onFocusBlocked: (nodeId: string) => void
+  onFocusedNodeSettled: (nodeId: string) => void
 }
 
 const getCultureScopedNodeIds = (graph: MythographGraph, cultureIds: string[]) => {
@@ -92,7 +93,11 @@ const collectFocusSets = (graph: MythographGraph, focusedNodeId: string | null) 
   return { focusedEdgeIds, highlightedNodeIds }
 }
 
-export const GraphCanvas = ({ focusedNodeId, onFocusedNodeSettled }: GraphCanvasProps) => {
+export const GraphCanvas = ({
+  focusedNodeId,
+  onFocusBlocked,
+  onFocusedNodeSettled,
+}: GraphCanvasProps) => {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const graphRef = useRef<MythographGraph | null>(null)
   const sigmaRef = useRef<Sigma<GraphNodeAttributes, GraphEdgeAttributes, GraphAttributes> | null>(
@@ -285,16 +290,23 @@ export const GraphCanvas = ({ focusedNodeId, onFocusedNodeSettled }: GraphCanvas
 
     const attributes = currentGraph.getNodeAttributes(focusedNodeId)
 
-    renderer.getCamera().animate(
-      {
-        ratio: 0.35,
-        x: attributes.x,
-        y: attributes.y,
-      },
-      { duration: 400 }
-    )
-    onFocusedNodeSettled()
-  }, [focusedNodeId, onFocusedNodeSettled])
+    if (attributes.hidden) {
+      onFocusBlocked(focusedNodeId)
+      return
+    }
+
+    void renderer
+      .getCamera()
+      .animate(
+        {
+          ratio: 0.5,
+          x: attributes.x,
+          y: attributes.y,
+        },
+        { duration: 400, easing: 'cubicInOut' }
+      )
+      .then(() => onFocusedNodeSettled(focusedNodeId))
+  }, [focusedNodeId, onFocusBlocked, onFocusedNodeSettled])
 
   if (entitiesQuery.isError || relationshipsQuery.isError) {
     return (

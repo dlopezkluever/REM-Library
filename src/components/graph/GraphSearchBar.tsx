@@ -1,30 +1,57 @@
-import { useEffect, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { type KeyboardEvent, type RefObject, useEffect, useState } from 'react'
 import { Search } from 'lucide-react'
 import { EntityBadge } from '@/components/entity/EntityBadge'
-import { getPublishedEntities, type EntityRow } from '@/lib/api/entities'
+import { useSearch } from '@/hooks/useSearch'
+import type { EntitySearchResult } from '@/types/domain'
 
 interface GraphSearchBarProps {
-  inputRef: React.RefObject<HTMLInputElement | null>
-  onSelect: (entity: EntityRow) => void
+  inputRef: RefObject<HTMLInputElement | null>
+  onSelect: (entity: EntitySearchResult) => void
 }
 
 export const GraphSearchBar = ({ inputRef, onSelect }: GraphSearchBarProps) => {
-  const [query, setQuery] = useState('')
-  const [debouncedQuery, setDebouncedQuery] = useState('')
+  const [activeIndex, setActiveIndex] = useState(0)
+  const { error, isLoading, query, results, setQuery } = useSearch()
+  const entityResults = results.entities.slice(0, 8)
+  const safeActiveIndex = Math.min(activeIndex, Math.max(entityResults.length - 1, 0))
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setDebouncedQuery(query.trim()), 200)
+    const focusSearch = () => inputRef.current?.focus()
 
-    return () => window.clearTimeout(timer)
-  }, [query])
+    window.addEventListener('mythograph:focus-graph-search', focusSearch)
 
-  const { data: results = [] } = useQuery({
-    queryKey: ['entities', 'published', 'search', debouncedQuery],
-    queryFn: () => getPublishedEntities({ search: debouncedQuery, limit: 8 }),
-    enabled: debouncedQuery.length > 0,
-    staleTime: 30_000,
-  })
+    return () => window.removeEventListener('mythograph:focus-graph-search', focusSearch)
+  }, [inputRef])
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Escape') {
+      setQuery('')
+      inputRef.current?.focus()
+      return
+    }
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      setActiveIndex((current) => Math.min(current + 1, Math.max(entityResults.length - 1, 0)))
+      return
+    }
+
+    if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      setActiveIndex((current) => Math.max(current - 1, 0))
+      return
+    }
+
+    if (event.key === 'Enter') {
+      const selectedEntity = entityResults[safeActiveIndex]
+
+      if (selectedEntity) {
+        event.preventDefault()
+        onSelect(selectedEntity)
+        setQuery('')
+      }
+    }
+  }
 
   return (
     <div className="pointer-events-auto absolute left-1/2 top-8 z-20 w-[min(calc(100vw-2rem),520px)] -translate-x-1/2">
@@ -33,25 +60,37 @@ export const GraphSearchBar = ({ inputRef, onSelect }: GraphSearchBarProps) => {
         <input
           ref={inputRef}
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={(event) => {
+            setQuery(event.target.value)
+            setActiveIndex(0)
+          }}
+          onKeyDown={handleKeyDown}
           placeholder="Search symbols, figures, narratives..."
           className="h-11 w-full rounded border-0.5 border-white/15 bg-charcoal/80 pl-10 pr-4 font-body text-[13px] text-white/80 outline-none backdrop-blur-sm transition-colors placeholder:text-white/30 focus:border-verdigris/70"
           type="search"
         />
       </div>
 
-      {debouncedQuery.length > 0 ? (
+      {query.trim().length > 0 ? (
         <div className="mt-1 overflow-hidden rounded border-0.5 border-white/10 bg-charcoal/95 backdrop-blur-md">
-          {results.length > 0 ? (
-            results.map((entity) => (
+          {error ? (
+            <p className="px-3 py-2 font-body text-[12px] text-white/40">
+              Search is temporarily unavailable.
+            </p>
+          ) : isLoading && entityResults.length === 0 ? (
+            <p className="px-3 py-2 font-body text-[12px] text-white/40">Searching...</p>
+          ) : entityResults.length > 0 ? (
+            entityResults.map((entity, index) => (
               <button
                 key={entity.id}
-                className="flex w-full items-center justify-between gap-3 border-b-0.5 border-white/5 px-3 py-2 text-left transition-colors last:border-b-0 hover:bg-white/[0.04]"
+                className="flex w-full items-center justify-between gap-3 border-b-0.5 border-white/5 px-3 py-2 text-left transition-colors last:border-b-0 hover:bg-white/[0.04] data-[active=true]:bg-white/[0.07]"
+                data-active={safeActiveIndex === index}
                 type="button"
                 onClick={() => {
                   onSelect(entity)
                   setQuery('')
                 }}
+                onMouseEnter={() => setActiveIndex(index)}
               >
                 <span className="truncate font-body text-[12px] text-white/80">{entity.name}</span>
                 <EntityBadge type={entity.type} />
@@ -59,7 +98,7 @@ export const GraphSearchBar = ({ inputRef, onSelect }: GraphSearchBarProps) => {
             ))
           ) : (
             <p className="px-3 py-2 font-body text-[12px] text-white/40">
-              No results for "{debouncedQuery}".
+              No visible graph results for "{query.trim()}".
             </p>
           )}
         </div>
