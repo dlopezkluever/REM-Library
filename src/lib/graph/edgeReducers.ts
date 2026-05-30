@@ -38,6 +38,6 @@ export const createEdgeReducer =
       hidden: data.hidden ?? false,
       label: data.label,
       size: focused ? weightToSize(data.weight) : 0.3,
-      type: 'line',
+      type: focused && relationshipTypeToDashed(data.relationshipType) ? 'dashed' : 'line',
     }
   }

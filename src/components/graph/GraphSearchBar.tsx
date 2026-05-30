@@ -50,7 +50,7 @@ export const GraphSearchBar = ({ inputRef, onSelect }: GraphSearchBarProps) => {
                 type="button"
                 onClick={() => {
                   onSelect(entity)
-                  setQuery(entity.name)
+                  setQuery('')
                 }}
               >
                 <span className="truncate font-body text-[12px] text-white/80">{entity.name}</span>
