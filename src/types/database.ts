@@ -450,6 +450,21 @@ export type Database = {
     Functions: {
       has_internal_access: { Args: never; Returns: boolean }
       is_admin: { Args: never; Returns: boolean }
+      refresh_search_indexes: { Args: never; Returns: undefined }
+      search_entities: {
+        Args: { search_query: string }
+        Returns: {
+          confidence_score: number
+          id: string
+          matched_excerpt: string
+          name: string
+          rank: number
+          similarity: number
+          slug: string
+          type: Database['public']['Enums']['entity_type']
+        }[]
+      }
+      search_global: { Args: { search_query: string }; Returns: Json }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { '': string }; Returns: string[] }
     }

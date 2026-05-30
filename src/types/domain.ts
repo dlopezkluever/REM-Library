@@ -73,3 +73,37 @@ export interface Source {
   pipeline_stage: PipelineStage
   created_at: string
 }
+
+export interface EntitySearchResult {
+  kind: 'entity'
+  id: string
+  type: EntityType
+  name: string
+  slug: string
+  confidenceScore: number
+  matchedExcerpt: string
+}
+
+export interface ClaimSearchResult {
+  kind: 'claim'
+  id: string
+  statement: string
+  confidenceScore: number
+  matchedExcerpt: string
+}
+
+export interface SourceSearchResult {
+  kind: 'source'
+  id: string
+  title: string
+  format: SourceFormat
+  tier: SourceTier
+  matchedExcerpt: string
+  chunkId?: string
+}
+
+export interface SearchResults {
+  entities: EntitySearchResult[]
+  claims: ClaimSearchResult[]
+  sources: SourceSearchResult[]
+}
