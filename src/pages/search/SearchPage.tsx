@@ -6,7 +6,11 @@ import { EntityBadge } from '@/components/entity/EntityBadge'
 import { Badge } from '@/components/ui/badge'
 import { ENTITY_LABELS } from '@/constants/entityTypes'
 import { searchAll } from '@/lib/api/search'
-import { hasSearchResults } from '@/lib/searchResults'
+import {
+  EMPTY_SEARCH_RESULTS,
+  hasSearchResults,
+  stripSearchHeadlineTags,
+} from '@/lib/searchResults'
 import type {
   ClaimSearchResult,
   EntitySearchResult,
@@ -17,14 +21,6 @@ import type {
 
 const ENTITY_TYPES: EntityType[] = ['symbol', 'figure', 'narrative', 'trope', 'culture']
 
-const EMPTY_RESULTS: SearchResults = {
-  claims: [],
-  entities: [],
-  sources: [],
-}
-
-const stripHeadlineTags = (value: string) => value.replace(/<\/?b>/g, '')
-
 const queryTerms = (query: string) =>
   query
     .trim()
@@ -33,7 +29,7 @@ const queryTerms = (query: string) =>
     .filter(Boolean)
 
 const HighlightedExcerpt = ({ query, text }: { query: string; text: string }) => {
-  const cleanText = stripHeadlineTags(text)
+  const cleanText = stripSearchHeadlineTags(text)
   const terms = queryTerms(query)
 
   if (terms.length === 0) {
@@ -115,11 +111,11 @@ export default function SearchPage() {
   const searchQuery = useQuery({
     enabled: query.length > 0,
     queryKey: ['search', query],
-    queryFn: () => searchAll(query),
+    queryFn: ({ signal }) => searchAll(query, { signal }),
     staleTime: 30_000,
   })
 
-  const rawResults = searchQuery.data ?? EMPTY_RESULTS
+  const rawResults = searchQuery.data ?? EMPTY_SEARCH_RESULTS
 
   const filteredResults = useMemo<SearchResults>(() => {
     const confidenceInRange = (score: number) => score >= minConfidence && score <= maxConfidence

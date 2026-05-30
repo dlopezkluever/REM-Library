@@ -1,18 +1,25 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { FeaturedConnections } from '@/components/graph/FeaturedConnections'
-import { GraphCanvas } from '@/components/graph/GraphCanvas'
+import { GraphCanvas, type GraphFocusBlockReason } from '@/components/graph/GraphCanvas'
 import { GraphFilters } from '@/components/graph/GraphFilters'
 import { GraphSearchBar } from '@/components/graph/GraphSearchBar'
 import { GraphSidePanel } from '@/components/graph/GraphSidePanel'
 import { useGraphStore } from '@/stores/graphStore'
 import type { EntitySearchResult } from '@/types/domain'
 
+interface PendingFocus {
+  id: string
+  name: string
+}
+
+interface BlockedFocus extends PendingFocus {
+  reason: GraphFocusBlockReason
+}
+
 export default function GraphPage() {
   const searchInputRef = useRef<HTMLInputElement | null>(null)
-  const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null)
-  const [pendingFocusName, setPendingFocusName] = useState<string | null>(null)
-  const [hiddenSearchResultName, setHiddenSearchResultName] = useState<string | null>(null)
-  const [hiddenSearchResultId, setHiddenSearchResultId] = useState<string | null>(null)
+  const [pendingFocus, setPendingFocus] = useState<PendingFocus | null>(null)
+  const [blockedFocus, setBlockedFocus] = useState<BlockedFocus | null>(null)
   const setActiveNodeId = useGraphStore((state) => state.setActiveNodeId)
   const setHoveredNodeId = useGraphStore((state) => state.setHoveredNodeId)
   const resetFilters = useGraphStore((state) => state.resetFilters)
@@ -50,10 +57,8 @@ export default function GraphPage() {
     (entity: EntitySearchResult) => {
       setHoveredNodeId(null)
       setActiveNodeId(null)
-      setPendingFocusName(entity.name)
-      setHiddenSearchResultName(null)
-      setHiddenSearchResultId(null)
-      setFocusedNodeId(entity.id)
+      setBlockedFocus(null)
+      setPendingFocus({ id: entity.id, name: entity.name })
     },
     [setActiveNodeId, setHoveredNodeId]
   )
@@ -61,25 +66,42 @@ export default function GraphPage() {
   const handleFocusedNodeSettled = useCallback(
     (nodeId: string) => {
       setActiveNodeId(nodeId)
-      setFocusedNodeId(null)
-      setPendingFocusName(null)
-      setHiddenSearchResultName(null)
-      setHiddenSearchResultId(null)
+      setPendingFocus((current) => (current?.id === nodeId ? null : current))
+      setBlockedFocus(null)
     },
     [setActiveNodeId]
   )
 
-  const handleFocusBlocked = useCallback((nodeId: string) => {
-    setFocusedNodeId(null)
-    setHiddenSearchResultName(pendingFocusName)
-    setHiddenSearchResultId(nodeId)
-    setPendingFocusName(null)
-  }, [pendingFocusName])
+  const handleFocusBlocked = useCallback(
+    (nodeId: string, reason: GraphFocusBlockReason) => {
+      const focusName = pendingFocus?.id === nodeId ? pendingFocus.name : 'This entity'
+
+      setBlockedFocus({
+        id: nodeId,
+        name: focusName,
+        reason,
+      })
+      setPendingFocus((current) => (current?.id === nodeId ? null : current))
+    },
+    [pendingFocus]
+  )
+
+  const retryBlockedFocus = () => {
+    if (!blockedFocus) {
+      return
+    }
+
+    resetFilters()
+    setPendingFocus({ id: blockedFocus.id, name: blockedFocus.name })
+    setBlockedFocus(null)
+  }
+
+  const dismissBlockedFocus = () => setBlockedFocus(null)
 
   return (
     <div className="relative h-full">
       <GraphCanvas
-        focusedNodeId={focusedNodeId}
+        focusedNodeId={pendingFocus?.id ?? null}
         onFocusBlocked={handleFocusBlocked}
         onFocusedNodeSettled={handleFocusedNodeSettled}
       />
@@ -88,21 +110,19 @@ export default function GraphPage() {
         <GraphFilters />
         <FeaturedConnections />
       </div>
-      {hiddenSearchResultName ? (
+      {blockedFocus ? (
         <div className="absolute bottom-5 left-1/2 z-40 flex w-[min(calc(100vw-2rem),420px)] -translate-x-1/2 items-center justify-between gap-4 rounded border-0.5 border-white/10 bg-charcoal/95 px-4 py-3 text-white shadow-xl backdrop-blur-md">
           <p className="font-body text-[12px] text-white/70">
-            {hiddenSearchResultName} is hidden by your current filters.
+            {blockedFocus.reason === 'hidden'
+              ? `${blockedFocus.name} is hidden by your current filters.`
+              : 'This entity is not loaded in the current graph view.'}
           </p>
           <button
             className="shrink-0 font-body text-[12px] text-verdigris-light hover:text-white"
             type="button"
-            onClick={() => {
-              resetFilters()
-              setHiddenSearchResultName(null)
-              setFocusedNodeId(hiddenSearchResultId)
-            }}
+            onClick={blockedFocus.reason === 'hidden' ? retryBlockedFocus : dismissBlockedFocus}
           >
-            Clear filters
+            {blockedFocus.reason === 'hidden' ? 'Clear filters' : 'Dismiss'}
           </button>
         </div>
       ) : null}
