@@ -393,6 +393,7 @@ export type Database = {
         Row: {
           authors: string[]
           created_at: string
+          description: string | null
           duration_seconds: number | null
           file_path: string | null
           format: Database['public']['Enums']['source_format']
@@ -409,6 +410,7 @@ export type Database = {
         Insert: {
           authors?: string[]
           created_at?: string
+          description?: string | null
           duration_seconds?: number | null
           file_path?: string | null
           format: Database['public']['Enums']['source_format']
@@ -425,6 +427,7 @@ export type Database = {
         Update: {
           authors?: string[]
           created_at?: string
+          description?: string | null
           duration_seconds?: number | null
           file_path?: string | null
           format?: Database['public']['Enums']['source_format']

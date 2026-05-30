@@ -3,6 +3,14 @@ import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { AudioLines, BookOpen, FileText, Link as LinkIcon, Video } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import { getAllSources, getClaimCountsForSources } from '@/lib/api/sources'
 import { formatDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -201,29 +209,24 @@ export default function SourceLibraryPage() {
       </div>
 
       <div className="overflow-hidden rounded-lg border-0.5 border-black/10 bg-white">
-        <table className="w-full border-collapse">
-          <thead className="border-b-0.5 border-black/10 bg-stone/70">
-            <tr>
+        <Table>
+          <TableHeader>
+            <TableRow className="border-b-0.5 border-black/10 last:border-b-0.5">
               {['Title', 'Authors', 'Date', 'Format', 'Tier', 'Stage', 'Claims'].map((header) => (
-                <th
-                  key={header}
-                  className="px-4 py-3 text-left font-display text-[8px] uppercase tracking-label text-[#777]"
-                >
-                  {header}
-                </th>
+                <TableHead key={header}>{header}</TableHead>
               ))}
-            </tr>
-          </thead>
-          <tbody>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {sourcesQuery.isLoading
               ? skeletonRows.map((row) => (
-                  <tr key={row} className="border-b-0.5 border-black/[0.06]">
+                  <TableRow key={row}>
                     {Array.from({ length: 7 }, (_, index) => (
-                      <td key={index} className="px-4 py-3">
+                      <TableCell key={index}>
                         <Skeleton className="h-4 w-full" />
-                      </td>
+                      </TableCell>
                     ))}
-                  </tr>
+                  </TableRow>
                 ))
               : null}
             {!sourcesQuery.isLoading && filteredSources.length > 0
@@ -231,41 +234,41 @@ export default function SourceLibraryPage() {
                   const FormatIcon = formatIcons[source.format]
 
                   return (
-                    <tr key={source.id} className="border-b-0.5 border-black/[0.06] last:border-b-0">
-                      <td className="px-4 py-3">
+                    <TableRow key={source.id}>
+                      <TableCell>
                         <Link
                           className="font-body text-[12px] font-semibold text-ink hover:text-verdigris"
                           to={`/source/${source.id}`}
                         >
                           {source.title}
                         </Link>
-                      </td>
-                      <td className="px-4 py-3 font-body text-[11px] text-[#666]">
+                      </TableCell>
+                      <TableCell className="font-body text-[11px] text-[#666]">
                         {source.authors.join(', ') || 'Unknown'}
-                      </td>
-                      <td className="px-4 py-3 font-body text-[11px] text-[#666]">
+                      </TableCell>
+                      <TableCell className="font-body text-[11px] text-[#666]">
                         {formatDate(source.publication_date)}
-                      </td>
-                      <td className="px-4 py-3">
+                      </TableCell>
+                      <TableCell>
                         <FormatIcon className="h-4 w-4 text-[#666]" />
-                      </td>
-                      <td className="px-4 py-3">
+                      </TableCell>
+                      <TableCell>
                         <span className="rounded border-0.5 border-verdigris/40 bg-verdigris-light px-2 py-0.5 font-display text-[8px] uppercase tracking-badge text-verdigris-dark">
                           Tier {source.tier === 'primary' ? '1' : '2'}
                         </span>
-                      </td>
-                      <td className="px-4 py-3 font-body text-[11px] capitalize text-[#666]">
+                      </TableCell>
+                      <TableCell className="font-body text-[11px] capitalize text-[#666]">
                         {source.pipeline_stage}
-                      </td>
-                      <td className="px-4 py-3 font-body text-[11px] text-[#666]">
+                      </TableCell>
+                      <TableCell className="font-body text-[11px] text-[#666]">
                         {claimCountsBySourceId.get(source.id) ?? 0}
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   )
                 })
               : null}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
 
       {!sourcesQuery.isLoading && !sourcesQuery.isError && sourcesQuery.data?.length === 0 ? (
