@@ -166,7 +166,7 @@ export default function EntityDetailPage() {
                       {truncateText(claim.statement, 180)}
                     </p>
                     <p className="mt-1 font-body text-[11px] italic text-[#777]">
-                      Attributed researcher
+                      {claim.profiles?.display_name ?? 'Unknown researcher'}
                     </p>
                   </div>
                   <ConfidenceBadge score={claim.confidence_override ?? claim.confidence_score} />

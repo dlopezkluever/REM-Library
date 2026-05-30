@@ -3,10 +3,16 @@ import type { Tables } from '@/types/database'
 
 export type ClaimRow = Tables<'claims'>
 
-export const getClaimById = async (id: string) => {
+export interface ClaimWithAuthor extends Tables<'claims'> {
+  profiles: { display_name: string | null } | null
+}
+
+const CLAIM_WITH_AUTHOR_SELECT = '*, profiles!claims_author_id_fkey(display_name)'
+
+export const getClaimById = async (id: string): Promise<ClaimWithAuthor> => {
   const { data, error } = await supabase
     .from('claims')
-    .select('*')
+    .select(CLAIM_WITH_AUTHOR_SELECT)
     .eq('id', id)
     .single()
 
@@ -14,7 +20,7 @@ export const getClaimById = async (id: string) => {
     throw error
   }
 
-  return data
+  return data as unknown as ClaimWithAuthor
 }
 
 export const getEntitiesForClaim = async (claimId: string) => {
@@ -47,7 +53,7 @@ export const getEntitiesForClaim = async (claimId: string) => {
   return data
 }
 
-export const getClaimsForEntity = async (entityId: string) => {
+export const getClaimsForEntity = async (entityId: string): Promise<ClaimWithAuthor[]> => {
   const { data: claimLinks, error: claimLinksError } = await supabase
     .from('claim_entities')
     .select('claim_id')
@@ -65,7 +71,7 @@ export const getClaimsForEntity = async (entityId: string) => {
 
   const { data, error } = await supabase
     .from('claims')
-    .select('*')
+    .select(CLAIM_WITH_AUTHOR_SELECT)
     .in('id', claimIds)
     .eq('status', 'published')
     .order('confidence_score', { ascending: false })
@@ -74,5 +80,5 @@ export const getClaimsForEntity = async (entityId: string) => {
     throw error
   }
 
-  return data
+  return data as unknown as ClaimWithAuthor[]
 }
