@@ -12,5 +12,6 @@ export const ROUTES = {
   ADMIN_SOURCE_NEW: '/admin/sources/new',
   ADMIN_REVIEW: '/admin/review',
   ADMIN_ENTITIES: '/admin/entities',
+  ADMIN_CLAIMS: '/admin/claims',
   ADMIN_SETTINGS: '/admin/settings',
 } as const
