@@ -1,7 +1,7 @@
 import { type KeyboardEvent, type RefObject, useEffect, useState } from 'react'
 import { Search } from 'lucide-react'
 import { EntityBadge } from '@/components/entity/EntityBadge'
-import { useSearch } from '@/hooks/useSearch'
+import { useEntitySearch } from '@/hooks/useEntitySearch'
 import type { EntitySearchResult } from '@/types/domain'
 
 interface GraphSearchBarProps {
@@ -11,8 +11,8 @@ interface GraphSearchBarProps {
 
 export const GraphSearchBar = ({ inputRef, onSelect }: GraphSearchBarProps) => {
   const [activeIndex, setActiveIndex] = useState(0)
-  const { error, isLoading, query, results, setQuery } = useSearch()
-  const entityResults = results.entities.slice(0, 8)
+  const { error, isLoading, query, results, setQuery } = useEntitySearch()
+  const entityResults = results.slice(0, 8)
   const safeActiveIndex = Math.min(activeIndex, Math.max(entityResults.length - 1, 0))
 
   useEffect(() => {

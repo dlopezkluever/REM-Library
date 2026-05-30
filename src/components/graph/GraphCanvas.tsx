@@ -21,9 +21,11 @@ import type { EntityType } from '@/types/domain'
 
 interface GraphCanvasProps {
   focusedNodeId: string | null
-  onFocusBlocked: (nodeId: string) => void
+  onFocusBlocked: (nodeId: string, reason: GraphFocusBlockReason) => void
   onFocusedNodeSettled: (nodeId: string) => void
 }
+
+export type GraphFocusBlockReason = 'hidden' | 'missing'
 
 const getCultureScopedNodeIds = (graph: MythographGraph, cultureIds: string[]) => {
   const scopedNodeIds = new Set<string>(cultureIds)
@@ -284,14 +286,23 @@ export const GraphCanvas = ({
     const currentGraph = graphRef.current
     const renderer = sigmaRef.current
 
-    if (!focusedNodeId || !currentGraph || !renderer || !currentGraph.hasNode(focusedNodeId)) {
+    if (!focusedNodeId) {
+      return
+    }
+
+    if (!currentGraph || !renderer) {
+      return
+    }
+
+    if (!currentGraph.hasNode(focusedNodeId)) {
+      onFocusBlocked(focusedNodeId, 'missing')
       return
     }
 
     const attributes = currentGraph.getNodeAttributes(focusedNodeId)
 
     if (attributes.hidden) {
-      onFocusBlocked(focusedNodeId)
+      onFocusBlocked(focusedNodeId, 'hidden')
       return
     }
 
@@ -306,7 +317,7 @@ export const GraphCanvas = ({
         { duration: 400, easing: 'cubicInOut' }
       )
       .then(() => onFocusedNodeSettled(focusedNodeId))
-  }, [focusedNodeId, onFocusBlocked, onFocusedNodeSettled])
+  }, [filterState, focusedNodeId, graph, onFocusBlocked, onFocusedNodeSettled])
 
   if (entitiesQuery.isError || relationshipsQuery.isError) {
     return (
