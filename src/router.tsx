@@ -16,6 +16,7 @@ import AdminSourceListPage from '@/pages/admin/AdminSourceListPage'
 import AdminSourceNewPage from '@/pages/admin/AdminSourceNewPage'
 import AdminReviewQueuePage from '@/pages/admin/AdminReviewQueuePage'
 import AdminEntityManagerPage from '@/pages/admin/AdminEntityManagerPage'
+import AdminClaimManagerPage from '@/pages/admin/AdminClaimManagerPage'
 import AdminSettingsPage from '@/pages/admin/AdminSettingsPage'
 import ErrorPage from '@/pages/ErrorPage'
 
@@ -56,6 +57,7 @@ export const router = createBrowserRouter([
           { path: '/admin/sources/new', element: <AdminSourceNewPage /> },
           { path: '/admin/review', element: <AdminReviewQueuePage /> },
           { path: '/admin/entities', element: <AdminEntityManagerPage /> },
+          { path: '/admin/claims', element: <AdminClaimManagerPage /> },
           { path: '/admin/settings', element: <AdminSettingsPage /> },
         ],
       },
