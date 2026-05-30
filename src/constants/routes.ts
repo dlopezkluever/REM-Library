@@ -4,7 +4,7 @@ export const ROUTES = {
   ENTITY: '/entity/:slug',
   CLAIM: '/claim/:id',
   SOURCES: '/sources',
-  SOURCE_DETAIL: '/sources/:id',
+  SOURCE_DETAIL: '/source/:id',
   SEARCH: '/search',
   ADMIN_LOGIN: '/admin/login',
   ADMIN_DASHBOARD: '/admin/dashboard',

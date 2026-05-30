@@ -30,6 +30,7 @@ export const router = createBrowserRouter([
       { path: '/entity/:slug', element: <EntityDetailPage /> },
       { path: '/claim/:id', element: <ClaimDetailPage /> },
       { path: '/sources', element: <SourceLibraryPage /> },
+      { path: '/source/:id', element: <SourceDetailPage /> },
       { path: '/sources/:id', element: <SourceDetailPage /> },
       { path: '/search', element: <SearchPage /> },
     ],
