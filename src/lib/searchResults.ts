@@ -7,6 +7,12 @@ import type {
   SourceSearchResult,
 } from '@/types/domain'
 
+export const EMPTY_SEARCH_RESULTS: SearchResults = {
+  claims: [],
+  entities: [],
+  sources: [],
+}
+
 export type SearchResultItem =
   | {
       groupLabel: string
@@ -85,3 +91,5 @@ export const flattenSearchResults = (results: SearchResults, perGroup = 3): Sear
 
 export const hasSearchResults = (results: SearchResults) =>
   results.entities.length > 0 || results.claims.length > 0 || results.sources.length > 0
+
+export const stripSearchHeadlineTags = (value: string) => value.replace(/<\/?b>/g, '')

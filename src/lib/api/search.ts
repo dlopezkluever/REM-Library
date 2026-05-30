@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase/client'
+import { EMPTY_SEARCH_RESULTS } from '@/lib/searchResults'
 import type {
   ClaimSearchResult,
   EntitySearchResult,
@@ -11,10 +12,10 @@ interface SearchAllOptions {
   signal?: AbortSignal
 }
 
-const EMPTY_RESULTS: SearchResults = {
-  claims: [],
-  entities: [],
-  sources: [],
+interface RefreshSearchIndexesStatus {
+  missingChunkFts: number
+  missingEntityFts: number
+  ok: boolean
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -68,21 +69,21 @@ const isSourceSearchResult = (value: unknown): value is SourceSearchResult => {
 
 const normalizeSearchResults = (value: unknown): SearchResults => {
   if (!isRecord(value)) {
-    return EMPTY_RESULTS
+    return EMPTY_SEARCH_RESULTS
   }
 
   const entities = Array.isArray(value.entities)
     ? value.entities.filter(isEntitySearchResult)
-    : EMPTY_RESULTS.entities
+    : EMPTY_SEARCH_RESULTS.entities
   const claims = Array.isArray(value.claims)
     ? value.claims.filter(isClaimSearchResult)
-    : EMPTY_RESULTS.claims
+    : EMPTY_SEARCH_RESULTS.claims
   const sources = Array.isArray(value.sources)
     ? value.sources.filter(isSourceSearchResult).map((source) => ({
         ...source,
         chunkId: source.chunkId ?? undefined,
       }))
-    : EMPTY_RESULTS.sources
+    : EMPTY_SEARCH_RESULTS.sources
 
   return { claims, entities, sources }
 }
@@ -90,8 +91,21 @@ const normalizeSearchResults = (value: unknown): SearchResults => {
 const isAbortError = (error: unknown) =>
   error instanceof DOMException && error.name === 'AbortError'
 
-const searchViaRpc = async (query: string) => {
-  const { data, error } = await supabase.rpc('search_global', { search_query: query })
+const abortError = () => new DOMException('Aborted', 'AbortError')
+
+const throwIfAborted = (signal?: AbortSignal) => {
+  if (signal?.aborted) {
+    throw abortError()
+  }
+}
+
+const searchViaRpc = async (query: string, signal?: AbortSignal) => {
+  throwIfAborted(signal)
+
+  const rpcQuery = supabase.rpc('search_global', { search_query: query })
+  const { data, error } = signal ? await rpcQuery.abortSignal(signal) : await rpcQuery
+
+  throwIfAborted(signal)
 
   if (error) {
     throw error
@@ -107,7 +121,7 @@ export const searchAll = async (
   const trimmedQuery = query.trim()
 
   if (!trimmedQuery) {
-    return EMPTY_RESULTS
+    return EMPTY_SEARCH_RESULTS
   }
 
   try {
@@ -122,22 +136,36 @@ export const searchAll = async (
 
     return normalizeSearchResults(data)
   } catch (error) {
-    if (options.signal?.aborted || isAbortError(error)) {
+    if (options.signal?.aborted) {
+      throw abortError()
+    }
+
+    if (isAbortError(error)) {
       throw error
     }
 
-    return searchViaRpc(trimmedQuery)
+    return searchViaRpc(trimmedQuery, options.signal)
   }
 }
 
-export const searchEntities = async (query: string): Promise<EntitySearchResult[]> => {
+export const searchEntities = async (
+  query: string,
+  options: SearchAllOptions = {}
+): Promise<EntitySearchResult[]> => {
   const trimmedQuery = query.trim()
 
   if (!trimmedQuery) {
     return []
   }
 
-  const { data, error } = await supabase.rpc('search_entities', { search_query: trimmedQuery })
+  throwIfAborted(options.signal)
+
+  const rpcQuery = supabase.rpc('search_entities', { search_query: trimmedQuery })
+  const { data, error } = options.signal
+    ? await rpcQuery.abortSignal(options.signal)
+    : await rpcQuery
+
+  throwIfAborted(options.signal)
 
   if (error) {
     throw error
@@ -154,12 +182,30 @@ export const searchEntities = async (query: string): Promise<EntitySearchResult[
   }))
 }
 
-export const refreshSearchIndexes = async () => {
-  const { error } = await supabase.rpc('refresh_search_indexes')
+const isRefreshSearchIndexesStatus = (value: unknown): value is RefreshSearchIndexesStatus =>
+  isRecord(value) &&
+  typeof value.ok === 'boolean' &&
+  typeof value.missingEntityFts === 'number' &&
+  typeof value.missingChunkFts === 'number'
+
+export const refreshSearchIndexes = async (): Promise<RefreshSearchIndexesStatus> => {
+  const { data, error } = await supabase.rpc('refresh_search_indexes')
 
   if (error) {
     throw error
   }
+
+  if (!isRefreshSearchIndexesStatus(data)) {
+    throw new Error('Search index refresh returned an invalid status payload.')
+  }
+
+  if (!data.ok) {
+    throw new Error(
+      `Search index check failed: ${data.missingEntityFts} entities and ${data.missingChunkFts} chunks are missing FTS values.`
+    )
+  }
+
+  return data
 }
 
 // The Edge Function wraps PostgreSQL FTS plus pg_trgm fuzzy entity matching, while the RPC
