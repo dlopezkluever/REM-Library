@@ -53,7 +53,7 @@ export const ConfidenceBreakdown = ({ evidence, score }: ConfidenceBreakdownProp
         </div>
       ))}
       <div className="border-t-0.5 border-black/10 bg-stone/60 px-4 py-3 font-body text-[11px] text-[#666]">
-        Stored score: {Math.round(score * 100)}%
+        Score: {Math.round(score * 100)}% &middot; factor weights are evidence-derived estimates
       </div>
     </div>
   )
