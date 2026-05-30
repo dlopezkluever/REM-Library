@@ -66,16 +66,20 @@ as $$
       websearch_to_tsquery('english', nullif(trim(search_query), '')) as ts_query
   ),
   entity_results as (
-    select jsonb_build_object(
-      'kind', 'entity',
-      'id', entities.id,
-      'type', entities.type,
-      'name', entities.name,
-      'slug', entities.slug,
-      'confidenceScore', entities.confidence_score,
-      'matchedExcerpt', entities.matched_excerpt
-    ) as result
+    select
+      jsonb_build_object(
+        'kind', 'entity',
+        'id', entities.id,
+        'type', entities.type,
+        'name', entities.name,
+        'slug', entities.slug,
+        'confidenceScore', entities.confidence_score,
+        'matchedExcerpt', entities.matched_excerpt
+      ) as result,
+      greatest(entities.rank, entities.similarity) as rank,
+      entities.name
     from public.search_entities(search_query) entities
+    order by greatest(entities.rank, entities.similarity) desc, entities.name asc
     limit 30
   ),
   claim_matches as (
@@ -104,17 +108,20 @@ as $$
         to_tsvector('english', claims.statement || ' ' || coalesce(claims.detailed_argument, '')) @@ query_input.ts_query
         or claims.statement ilike '%' || query_input.raw_query || '%'
       )
-    order by rank desc, claims.confidence_score desc
+    order by rank desc, confidence_score desc
     limit 30
   ),
   claim_results as (
-    select jsonb_build_object(
-      'kind', 'claim',
-      'id', claim_matches.id,
-      'statement', claim_matches.statement,
-      'confidenceScore', claim_matches.confidence_score,
-      'matchedExcerpt', claim_matches.matched_excerpt
-    ) as result
+    select
+      jsonb_build_object(
+        'kind', 'claim',
+        'id', claim_matches.id,
+        'statement', claim_matches.statement,
+        'confidenceScore', claim_matches.confidence_score,
+        'matchedExcerpt', claim_matches.matched_excerpt
+      ) as result,
+      claim_matches.rank,
+      claim_matches.confidence_score
     from claim_matches
   ),
   source_matches as (
@@ -177,42 +184,61 @@ as $$
         and sources.status = 'published'
         and chunks.fts @@ query_input.ts_query
     ) matches
-    order by source_id, rank desc
-    limit 30
+    order by source_id, rank desc, title asc
   ),
   source_results as (
-    select jsonb_build_object(
-      'kind', 'source',
-      'id', source_matches.source_id,
-      'title', source_matches.title,
-      'format', source_matches.format,
-      'tier', source_matches.tier,
-      'matchedExcerpt', source_matches.matched_excerpt,
-      'chunkId', source_matches.chunk_id
-    ) as result
+    select
+      jsonb_build_object(
+        'kind', 'source',
+        'id', source_matches.source_id,
+        'title', source_matches.title,
+        'format', source_matches.format,
+        'tier', source_matches.tier,
+        'matchedExcerpt', source_matches.matched_excerpt,
+        'chunkId', source_matches.chunk_id
+      ) as result,
+      source_matches.rank,
+      source_matches.title
     from source_matches
     order by source_matches.rank desc, source_matches.title asc
+    limit 30
   )
   select jsonb_build_object(
-    'entities', coalesce((select jsonb_agg(result) from entity_results), '[]'::jsonb),
-    'claims', coalesce((select jsonb_agg(result) from claim_results), '[]'::jsonb),
-    'sources', coalesce((select jsonb_agg(result) from source_results), '[]'::jsonb)
+    'entities', coalesce((select jsonb_agg(result order by rank desc, name asc) from entity_results), '[]'::jsonb),
+    'claims', coalesce((select jsonb_agg(result order by rank desc, confidence_score desc) from claim_results), '[]'::jsonb),
+    'sources', coalesce((select jsonb_agg(result order by rank desc, title asc) from source_results), '[]'::jsonb)
   );
 $$;
 
 create or replace function public.refresh_search_indexes()
-returns void
+returns jsonb
 language plpgsql
 security invoker
 set search_path = public
 as $$
+declare
+  missing_entity_fts integer;
+  missing_chunk_fts integer;
 begin
   -- Generated tsvector columns recompute on row changes; Phase 5 publication jobs can call
   -- this RPC after batch publishes as a cheap contract check before moving to an external index.
-  perform 1
+  select count(*)::integer
+  into missing_entity_fts
   from public.entities
   where status = 'published'
-    and fts is null
-  limit 1;
+    and fts is null;
+
+  select count(*)::integer
+  into missing_chunk_fts
+  from public.chunks
+  inner join public.sources on sources.id = chunks.source_id
+  where sources.status = 'published'
+    and chunks.fts is null;
+
+  return jsonb_build_object(
+    'ok', missing_entity_fts = 0 and missing_chunk_fts = 0,
+    'missingEntityFts', missing_entity_fts,
+    'missingChunkFts', missing_chunk_fts
+  );
 end;
 $$;

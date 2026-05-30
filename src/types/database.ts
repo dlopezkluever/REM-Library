@@ -450,7 +450,14 @@ export type Database = {
     Functions: {
       has_internal_access: { Args: never; Returns: boolean }
       is_admin: { Args: never; Returns: boolean }
-      refresh_search_indexes: { Args: never; Returns: undefined }
+      refresh_search_indexes: {
+        Args: never
+        Returns: {
+          missingChunkFts: number
+          missingEntityFts: number
+          ok: boolean
+        }
+      }
       search_entities: {
         Args: { search_query: string }
         Returns: {
