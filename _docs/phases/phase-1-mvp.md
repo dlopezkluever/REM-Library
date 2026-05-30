@@ -6,6 +6,7 @@ This is the foundation every subsequent phase builds on. No user-facing features
 
 **Deliverable:** Supabase schema deployed; admin can log in; all routes render correctly; seeded test data appears via the API layer; CI passes.
 
+*NOTE*: Use supabase commands using "npx supabase <commands>" 
 ---
 
 ## Feature 1 — Complete Supabase database schema

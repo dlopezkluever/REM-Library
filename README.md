@@ -81,6 +81,21 @@ Edges encode relationship types (`SYMBOLIZES`, `APPEARS_IN`, `PARALLELS`, `INSTA
 | `npm run lint`      | Run ESLint                  |
 | `npm run typecheck` | Run TypeScript type checker |
 | `npm run test`      | Run Vitest test suite       |
+| `npm run seed`      | Reset local Supabase and load seed data |
+| `npm run smoke`     | Run the Supabase API smoke test |
+
+### Local Supabase
+
+Phase 1 uses Supabase migrations and seed data for local development:
+
+```sh
+npx supabase start
+npm run seed
+npm run smoke
+```
+
+The seeded admin account is `admin@mythograph.local` with password `mythograph-admin`.
+Set `VITE_SUPABASE_INTEGRATION_TESTS=true` when running Vitest against the local Supabase instance.
 
 ---
 
@@ -90,6 +105,7 @@ Edges encode relationship types (`SYMBOLIZES`, `APPEARS_IN`, `PARALLELS`, `INSTA
 | --------------------------- | -------------------------------------------------- |
 | `VITE_SUPABASE_URL`         | Supabase project URL                               |
 | `VITE_SUPABASE_ANON_KEY`    | Supabase anon/public key                           |
+| `VITE_SUPABASE_INTEGRATION_TESTS` | Enables local Supabase integration tests when set to `true` |
 | `SUPABASE_SERVICE_ROLE_KEY` | Service role key (server-side / pipeline use only) |
 | `ASSEMBLYAI_API_KEY`        | AssemblyAI transcription API key                   |
 | `ANTHROPIC_API_KEY`         | Claude API key for the extraction pipeline         |

@@ -51,6 +51,14 @@ export interface Relationship {
   created_at: string
 }
 
+export interface FeaturedConnection {
+  id: string
+  title: string
+  description: string
+  entity_color: string
+  created_at: string
+}
+
 export interface Source {
   id: string
   title: string
@@ -64,4 +72,38 @@ export interface Source {
   page_count: number | null
   pipeline_stage: PipelineStage
   created_at: string
+}
+
+export interface EntitySearchResult {
+  kind: 'entity'
+  id: string
+  type: EntityType
+  name: string
+  slug: string
+  confidenceScore: number
+  matchedExcerpt: string
+}
+
+export interface ClaimSearchResult {
+  kind: 'claim'
+  id: string
+  statement: string
+  confidenceScore: number
+  matchedExcerpt: string
+}
+
+export interface SourceSearchResult {
+  kind: 'source'
+  id: string
+  title: string
+  format: SourceFormat
+  tier: SourceTier
+  matchedExcerpt: string
+  chunkId?: string
+}
+
+export interface SearchResults {
+  entities: EntitySearchResult[]
+  claims: ClaimSearchResult[]
+  sources: SourceSearchResult[]
 }
