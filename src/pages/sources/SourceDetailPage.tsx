@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, type RefObject } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ExternalLink } from 'lucide-react'
@@ -15,7 +15,7 @@ import { formatDate } from '@/lib/format'
 
 export default function SourceDetailPage() {
   const { id } = useParams()
-  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const mediaRef = useRef<HTMLMediaElement | null>(null)
 
   const sourceQuery = useQuery({
     queryKey: ['source', id],
@@ -48,8 +48,8 @@ export default function SourceDetailPage() {
   })
 
   const seekTo = (seconds: number) => {
-    if (audioRef.current) {
-      audioRef.current.currentTime = seconds
+    if (mediaRef.current) {
+      mediaRef.current.currentTime = seconds
     }
   }
 
@@ -125,17 +125,35 @@ export default function SourceDetailPage() {
             {source.authors.join(', ') || 'Unknown author'} &middot;{' '}
             {formatDate(source.publication_date)}
           </p>
-          <p className="mt-4 max-w-2xl font-body text-[13px] leading-reading text-[#666]">
-            Source metadata is available; no long-form description has been added yet.
-          </p>
+          {source.description ? (
+            <p className="mt-4 max-w-2xl font-body text-[13px] leading-reading text-[#666]">
+              {source.description}
+            </p>
+          ) : null}
         </header>
 
         {source.format === 'audio' || source.format === 'video' ? (
           <section className="py-6">
             {hostedMediaUrl ? (
-              <audio ref={audioRef} className="w-full" controls src={hostedMediaUrl}>
-                <track kind="captions" />
-              </audio>
+              source.format === 'video' ? (
+                <video
+                  ref={mediaRef as RefObject<HTMLVideoElement>}
+                  className="w-full"
+                  controls
+                  src={hostedMediaUrl}
+                >
+                  <track kind="captions" />
+                </video>
+              ) : (
+                <audio
+                  ref={mediaRef as RefObject<HTMLAudioElement>}
+                  className="w-full"
+                  controls
+                  src={hostedMediaUrl}
+                >
+                  <track kind="captions" />
+                </audio>
+              )
             ) : source.url ? (
               <a
                 className="inline-flex items-center gap-2 rounded border-0.5 border-black/10 bg-white px-3 py-2 font-body text-[12px] text-verdigris"

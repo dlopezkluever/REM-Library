@@ -28,7 +28,7 @@ export const EntityChip = ({ name, slug, type, relationshipLabel, className }: E
       />
       <span className="truncate">{name}</span>
       {relationshipLabel ? (
-        <span className="shrink-0 font-display text-[7px] uppercase tracking-badge text-[#888]">
+        <span className="shrink-0 font-display text-[6.5px] uppercase tracking-badge text-[#888]">
           {relationshipLabel}
         </span>
       ) : null}
