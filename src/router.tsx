@@ -17,14 +17,17 @@ import AdminSourceNewPage from '@/pages/admin/AdminSourceNewPage'
 import AdminReviewQueuePage from '@/pages/admin/AdminReviewQueuePage'
 import AdminEntityManagerPage from '@/pages/admin/AdminEntityManagerPage'
 import AdminSettingsPage from '@/pages/admin/AdminSettingsPage'
+import ErrorPage from '@/pages/ErrorPage'
 
 export const router = createBrowserRouter([
   {
     element: <AppShell />,
+    errorElement: <ErrorPage />,
     children: [{ path: '/', element: <GraphPage /> }],
   },
   {
     element: <ContentShell />,
+    errorElement: <ErrorPage />,
     children: [
       { path: '/encyclopedia', element: <EncyclopediaBrowsePage /> },
       { path: '/entity/:slug', element: <EntityDetailPage /> },
@@ -38,9 +41,11 @@ export const router = createBrowserRouter([
   {
     path: '/admin/login',
     element: <AdminLoginPage />,
+    errorElement: <ErrorPage />,
   },
   {
     element: <RequireAdmin />,
+    errorElement: <ErrorPage />,
     children: [
       {
         element: <AdminShell />,
@@ -55,5 +60,9 @@ export const router = createBrowserRouter([
         ],
       },
     ],
+  },
+  {
+    path: '*',
+    element: <ErrorPage />,
   },
 ])

@@ -82,6 +82,8 @@ export const MiniGraph = ({ entityId }: MiniGraphProps) => {
             label: focused ? data.label : null,
             size: focused ? Math.max(7, baseSize * 0.42) : Math.max(4, baseSize * 0.25),
             type: 'glow',
+            x: data.x,
+            y: data.y,
           }
         },
         renderEdgeLabels: false,
