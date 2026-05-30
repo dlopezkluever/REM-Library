@@ -99,7 +99,8 @@ export default function ClaimDetailPage() {
           </div>
           <h1 className="font-body text-[18px] leading-reading text-ink">{claim.statement}</h1>
           <p className="mt-4 font-body text-[12px] italic text-[#666]">
-            Attributed researcher &middot; {new Date(claim.created_at).toLocaleDateString()}
+            {claim.profiles?.display_name ?? 'Unknown researcher'} &middot;{' '}
+            {new Date(claim.created_at).toLocaleDateString()}
           </p>
         </header>
 

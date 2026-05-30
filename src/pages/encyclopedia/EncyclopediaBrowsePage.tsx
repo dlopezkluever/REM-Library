@@ -2,9 +2,9 @@ import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { EntityCard } from '@/components/entity/EntityCard'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ENTITY_LABELS } from '@/constants/entityTypes'
 import { getPublishedEntities } from '@/lib/api/entities'
-import { cn } from '@/lib/utils'
 import type { EntityType } from '@/types/domain'
 
 const tabs: Array<{ label: string; value: EntityType | 'all' }> = [
@@ -46,22 +46,16 @@ export default function EncyclopediaBrowsePage() {
         <h1 className="font-display text-[28px] leading-tight text-ink">Published Entities</h1>
       </div>
 
-      <div className="mb-6 flex flex-wrap gap-2 border-b-0.5 border-black/10 pb-3">
-        {tabs.map((tab) => (
-          <button
-            key={tab.value}
-            type="button"
-            className={cn(
-              'rounded border-0.5 px-3 py-1.5 font-display text-[9px] uppercase tracking-badge transition-colors',
-              activeTab === tab.value
-                ? 'border-verdigris bg-verdigris-light text-verdigris-dark'
-                : 'border-black/10 bg-white text-[#777] hover:border-verdigris/50 hover:text-ink'
-            )}
-            onClick={() => setActiveTab(tab.value)}
-          >
-            {tab.label}
-          </button>
-        ))}
+      <div className="mb-6 border-b-0.5 border-black/10 pb-3">
+        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as EntityType | 'all')}>
+          <TabsList>
+            {tabs.map((tab) => (
+              <TabsTrigger key={tab.value} value={tab.value}>
+                {tab.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
       </div>
 
       {entitiesQuery.isLoading ? (
