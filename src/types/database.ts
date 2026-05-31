@@ -400,6 +400,7 @@ export type Database = {
           id: string
           page_count: number | null
           pipeline_stage: Database['public']['Enums']['pipeline_stage']
+          pipeline_stage_entered_at: string
           publication_date: string | null
           status: Database['public']['Enums']['content_status']
           tier: Database['public']['Enums']['source_tier']
@@ -417,6 +418,7 @@ export type Database = {
           id?: string
           page_count?: number | null
           pipeline_stage?: Database['public']['Enums']['pipeline_stage']
+          pipeline_stage_entered_at?: string
           publication_date?: string | null
           status?: Database['public']['Enums']['content_status']
           tier: Database['public']['Enums']['source_tier']
@@ -434,6 +436,7 @@ export type Database = {
           id?: string
           page_count?: number | null
           pipeline_stage?: Database['public']['Enums']['pipeline_stage']
+          pipeline_stage_entered_at?: string
           publication_date?: string | null
           status?: Database['public']['Enums']['content_status']
           tier?: Database['public']['Enums']['source_tier']
@@ -448,6 +451,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_admin_content_stats: { Args: never; Returns: Json }
       has_internal_access: { Args: never; Returns: boolean }
       is_admin: { Args: never; Returns: boolean }
       refresh_search_indexes: {
@@ -483,8 +487,11 @@ export type Database = {
       pipeline_stage:
         | 'uploaded'
         | 'transcribing'
+        | 'transcribing_failed'
         | 'chunking'
+        | 'chunking_failed'
         | 'extracting'
+        | 'extracting_failed'
         | 'review'
         | 'curated'
         | 'published'
@@ -629,8 +636,11 @@ export const Constants = {
       pipeline_stage: [
         'uploaded',
         'transcribing',
+        'transcribing_failed',
         'chunking',
+        'chunking_failed',
         'extracting',
+        'extracting_failed',
         'review',
         'curated',
         'published',
