@@ -5,9 +5,13 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   applySourceRealtimeChange,
+  createSourceFilePath,
+  getPipelineRerunAction,
+  sanitizeSourceFilename,
   sortSourcesByCreatedAt,
   type AdminSourceRow,
 } from '@/lib/api/admin'
+import { detectSourceFormat, normalizeSourceUrl, validateSourceFile } from '@/lib/sourceUpload'
 
 const createSource = (
   id: string,
@@ -83,6 +87,68 @@ describe('admin API helpers', () => {
 
     expect(nextSources.map((source) => source.id)).toEqual(['retained'])
   })
+
+  it('removes archived sources from the realtime monitor cache', () => {
+    const archived = createSource('archived', '2026-05-01T00:00:00.000Z', {
+      status: 'archived',
+    })
+    const retained = createSource('retained', '2026-05-02T00:00:00.000Z')
+
+    const nextSources = applySourceRealtimeChange([archived, retained], {
+      eventType: 'UPDATE',
+      source: archived,
+    })
+
+    expect(nextSources.map((source) => source.id)).toEqual(['retained'])
+  })
+
+  it('sanitizes source file paths under the source id', () => {
+    expect(sanitizeSourceFilename('../My Audio:Test.mp3')).toBe('..-My-Audio-Test.mp3')
+    expect(createSourceFilePath('source-id', '../My Audio:Test.mp3')).toBe(
+      'source-id/..-My-Audio-Test.mp3'
+    )
+  })
+
+  it('maps pipeline reruns to the safe backend function', () => {
+    expect(getPipelineRerunAction('transcribing_failed').functionName).toBe(
+      'trigger-transcription'
+    )
+    expect(getPipelineRerunAction('extracting_failed').functionName).toBe('trigger-extraction')
+    expect(getPipelineRerunAction('chunking_failed').functionName).toBeNull()
+  })
+
+  it('disables reruns for URL-only uploaded sources', () => {
+    const action = getPipelineRerunAction('uploaded', {
+      file_path: null,
+      format: 'url',
+      status: 'draft',
+    })
+
+    expect(action.functionName).toBeNull()
+    expect(action.disabledReason).toContain('URL ingestion')
+  })
+})
+
+describe('source upload helpers', () => {
+  it('detects supported source formats from filenames', () => {
+    expect(detectSourceFormat('lecture.mp3')).toBe('audio')
+    expect(detectSourceFormat('archive.mov')).toBe('video')
+    expect(detectSourceFormat('book.pdf')).toBe('book')
+    expect(detectSourceFormat('notes.md')).toBe('text')
+  })
+
+  it('rejects unsupported source extensions before upload', () => {
+    const file = new File(['test'], 'script.exe', { type: 'application/octet-stream' })
+
+    expect(validateSourceFile(file)).toBe('Choose a supported source file type.')
+  })
+
+  it('allows only http and https source URLs', () => {
+    expect(normalizeSourceUrl('https://example.com/source')).toBe('https://example.com/source')
+    expect(() => normalizeSourceUrl('ftp://example.com/source')).toThrow(
+      'Source URLs must start with http:// or https://.'
+    )
+  })
 })
 
 describe('admin dashboard migration', () => {
@@ -95,5 +161,27 @@ describe('admin dashboard migration', () => {
     expect(migration).toMatch(
       /from confidence_values\s+where confidence is not null\s+group by label/
     )
+  })
+
+  it('adds source file delete policy and MIME restrictions', () => {
+    const migration = readFileSync(
+      join(process.cwd(), 'supabase/migrations/20260530060000_source_files_bucket.sql'),
+      'utf8'
+    )
+
+    expect(migration).toContain('source files admin delete')
+    expect(migration).toContain('application/pdf')
+    expect(migration).toContain('1073741824')
+  })
+
+  it('adds the admin source list aggregate RPC', () => {
+    const migration = readFileSync(
+      join(process.cwd(), 'supabase/migrations/20260531090000_admin_source_list_rows.sql'),
+      'utf8'
+    )
+
+    expect(migration).toContain('get_admin_source_list_rows')
+    expect(migration).toContain('pending_review_count')
+    expect(migration).toContain('left join lateral')
   })
 })

@@ -1,7 +1,14 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { BookOpen, ExternalLink, FileAudio, FileText, LinkIcon, Video } from 'lucide-react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { ExternalLink, RefreshCw } from 'lucide-react'
+import {
+  formatLabels,
+  getStageClassName,
+  isFailedPipelineStage,
+  SourceFormatIcon,
+  stageLabels,
+} from '@/components/admin/sourceDisplay'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -14,76 +21,15 @@ import {
 } from '@/components/ui/table'
 import {
   applySourceRealtimeChange,
+  getPipelineRerunAction,
   getAdminSources,
+  rerunSourcePipelineStage,
   subscribeToSourceUpdates,
   type AdminSourceRow,
 } from '@/lib/api/admin'
 import { cn } from '@/lib/utils'
 
 const adminSourcesQueryKey = ['admin', 'sources'] as const
-
-const formatLabels: Record<AdminSourceRow['format'], string> = {
-  audio: 'Audio',
-  video: 'Video',
-  text: 'Text',
-  book: 'Book',
-  url: 'URL',
-}
-
-const stageLabels: Record<AdminSourceRow['pipeline_stage'], string> = {
-  uploaded: 'Uploaded',
-  transcribing: 'Transcribing',
-  transcribing_failed: 'Transcription Failed',
-  chunking: 'Chunking',
-  chunking_failed: 'Chunking Failed',
-  extracting: 'Extracting',
-  extracting_failed: 'Extraction Failed',
-  review: 'Review',
-  curated: 'Curated',
-  published: 'Published',
-}
-
-const formatIconClass = 'h-4 w-4 text-[#777]'
-
-const FormatIcon = ({ format }: { format: AdminSourceRow['format'] }) => {
-  if (format === 'audio') {
-    return <FileAudio aria-hidden="true" className={formatIconClass} />
-  }
-
-  if (format === 'video') {
-    return <Video aria-hidden="true" className={formatIconClass} />
-  }
-
-  if (format === 'book') {
-    return <BookOpen aria-hidden="true" className={formatIconClass} />
-  }
-
-  if (format === 'url') {
-    return <LinkIcon aria-hidden="true" className={formatIconClass} />
-  }
-
-  return <FileText aria-hidden="true" className={formatIconClass} />
-}
-
-const getStageClassName = (stage: AdminSourceRow['pipeline_stage']) => {
-  if (stage.endsWith('_failed')) {
-    return 'border-terracotta/50 bg-terracotta-light text-terracotta-dark'
-  }
-
-  if (stage === 'review') {
-    return 'border-terracotta/50 bg-terracotta-light text-terracotta-dark'
-  }
-
-  if (stage === 'published' || stage === 'curated') {
-    return 'border-verdigris/60 bg-verdigris-light text-verdigris-dark'
-  }
-
-  if (stage === 'extracting' || stage === 'transcribing' || stage === 'chunking') {
-    return 'border-[#C9A84C]/60 bg-[#FBF6DF] text-[#6F5A12]'
-  }
-
-  return 'border-black/15 bg-white text-[#777]'
-}
 
 const formatRelativeDuration = (fromIso: string, now: number) => {
   const elapsedMs = Math.max(now - new Date(fromIso).getTime(), 0)
@@ -117,6 +63,14 @@ export const PipelineMonitor = () => {
   } = useQuery({
     queryKey: adminSourcesQueryKey,
     queryFn: getAdminSources,
+  })
+  const rerunMutation = useMutation({
+    mutationFn: (source: AdminSourceRow) =>
+      rerunSourcePipelineStage(source.id, source.pipeline_stage, source),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: adminSourcesQueryKey })
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'source-list'] })
+    },
   })
 
   useEffect(() => {
@@ -152,6 +106,13 @@ export const PipelineMonitor = () => {
 
   return (
     <div className="overflow-hidden rounded border border-0.5 border-black/[0.09] bg-white">
+      {rerunMutation.error ? (
+        <div className="border-b border-b-0.5 border-b-terracotta/20 bg-terracotta-light p-3">
+          <p className="font-body text-sm text-terracotta-dark">
+            Pipeline stage could not be restarted.
+          </p>
+        </div>
+      ) : null}
       <Table>
         <TableHeader>
           <TableRow>
@@ -173,10 +134,14 @@ export const PipelineMonitor = () => {
           ) : (
             sources.map((source) => {
               const isReviewStage = source.pipeline_stage === 'review'
-              const isFailedStage = source.pipeline_stage.endsWith('_failed')
+              const isFailedStage = isFailedPipelineStage(source.pipeline_stage)
+              const rerunAction = getPipelineRerunAction(source.pipeline_stage, source)
+              const rerunInFlight =
+                rerunMutation.isPending && rerunMutation.variables?.id === source.id
               const actionRoute = isReviewStage
                 ? `/admin/review?source=${source.id}`
-                : `/admin/sources?source=${source.id}`
+                : `/admin/sources/${source.id}`
+              const canRerunInline = isFailedStage && !rerunAction.disabledReason
 
               return (
                 <TableRow key={source.id}>
@@ -190,7 +155,7 @@ export const PipelineMonitor = () => {
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2 font-body text-xs text-[#777]">
-                      <FormatIcon format={source.format} />
+                      <SourceFormatIcon format={source.format} />
                       {formatLabels[source.format]}
                     </div>
                   </TableCell>
@@ -214,12 +179,28 @@ export const PipelineMonitor = () => {
                     {formatRelativeDuration(source.pipeline_stage_entered_at, now)}
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button asChild size="sm" variant={isReviewStage ? 'default' : 'outline'}>
-                      <Link to={actionRoute}>
-                        {isFailedStage ? 'Re-run' : isReviewStage ? 'Review' : 'View'}
-                        <ExternalLink aria-hidden="true" className="h-3 w-3" />
-                      </Link>
-                    </Button>
+                    {canRerunInline ? (
+                      <Button
+                        disabled={rerunInFlight}
+                        size="sm"
+                        type="button"
+                        variant="outline"
+                        onClick={() => rerunMutation.mutate(source)}
+                      >
+                        <RefreshCw
+                          aria-hidden="true"
+                          className={cn('h-3 w-3', rerunInFlight && 'animate-spin')}
+                        />
+                        {rerunAction.label}
+                      </Button>
+                    ) : (
+                      <Button asChild size="sm" variant={isReviewStage ? 'default' : 'outline'}>
+                        <Link to={actionRoute}>
+                          {isReviewStage ? 'Review' : 'View'}
+                          <ExternalLink aria-hidden="true" className="h-3 w-3" />
+                        </Link>
+                      </Button>
+                    )}
                   </TableCell>
                 </TableRow>
               )
