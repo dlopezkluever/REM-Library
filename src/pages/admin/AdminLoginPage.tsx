@@ -1,24 +1,26 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { ROUTES } from '@/constants/routes'
 import { useAuth } from '@/hooks/useAuth'
+import { getAdminRedirectDestination } from '@/lib/adminRedirect'
 
 export default function AdminLoginPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { session, signIn } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const redirectDestination = getAdminRedirectDestination(location.state)
 
   useEffect(() => {
     if (session) {
-      navigate(ROUTES.ADMIN_DASHBOARD, { replace: true })
+      navigate(redirectDestination, { replace: true })
     }
-  }, [navigate, session])
+  }, [navigate, redirectDestination, session])
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -27,7 +29,7 @@ export default function AdminLoginPage() {
 
     try {
       await signIn(email, password)
-      navigate(ROUTES.ADMIN_DASHBOARD, { replace: true })
+      navigate(redirectDestination, { replace: true })
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Unable to sign in.')
     } finally {
@@ -43,7 +45,9 @@ export default function AdminLoginPage() {
       >
         <div className="mb-6">
           <h1 className="font-display text-2xl text-ink">Admin Login</h1>
-          <p className="mt-2 font-body text-sm text-[#666]">Sign in to manage Mythograph content.</p>
+          <p className="mt-2 font-body text-sm text-[#666]">
+            Sign in to manage Mythograph content.
+          </p>
         </div>
 
         <div className="space-y-4">
