@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, ChevronLeft, ChevronRight, RefreshCw, Search } from 'lucide-react'
+import { AlertTriangle, Check, ChevronLeft, ChevronRight, RefreshCw, Search } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -16,6 +16,7 @@ import { ENTITY_LABELS } from '@/constants/entityTypes'
 import {
   getAdminEntitiesPage,
   publishAdminEntities,
+  triggerConfidenceComputation,
   updateAdminEntityStatus,
   type AdminEntityRow,
   type ContentStatus,
@@ -45,6 +46,7 @@ export default function AdminEntityManagerPage() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<ContentStatus | 'all'>('all')
   const [selectedEntityIds, setSelectedEntityIds] = useState<string[]>([])
+  const [failedConfidenceIds, setFailedConfidenceIds] = useState<string[]>([])
   const entitiesQuery = useQuery({
     queryKey: [...adminEntitiesQueryKey, page, search, statusFilter],
     queryFn: () =>
@@ -67,12 +69,18 @@ export default function AdminEntityManagerPage() {
 
   const bulkPublishMutation = useMutation({
     mutationFn: publishAdminEntities,
-    onSuccess: async () => {
+    onSuccess: async (result, publishedIds) => {
       setSelectedEntityIds([])
+      setFailedConfidenceIds(result.confidenceUpdateFailed ? publishedIds : [])
       await queryClient.invalidateQueries({ queryKey: adminEntitiesQueryKey })
       await queryClient.invalidateQueries({ queryKey: ['admin', 'content-stats'] })
       await queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard-counts'] })
     },
+  })
+
+  const retryConfidenceMutation = useMutation({
+    mutationFn: triggerConfidenceComputation,
+    onSuccess: () => setFailedConfidenceIds([]),
   })
 
   const entityPage = entitiesQuery.data
@@ -83,7 +91,7 @@ export default function AdminEntityManagerPage() {
   const selectedSet = useMemo(() => new Set(selectedEntityIds), [selectedEntityIds])
   const allVisibleSelected =
     entities.length > 0 && entities.every((entity) => selectedSet.has(entity.id))
-  const actionError = toggleStatusMutation.error ?? bulkPublishMutation.error
+  const actionError = toggleStatusMutation.error ?? bulkPublishMutation.error ?? retryConfidenceMutation.error
 
   const toggleSelected = (entityId: string) => {
     setSelectedEntityIds((current) =>
@@ -131,6 +139,31 @@ export default function AdminEntityManagerPage() {
       {actionError ? (
         <div className="rounded border border-0.5 border-terracotta/30 bg-terracotta-light p-4">
           <p className="font-body text-sm text-terracotta-dark">{getMutationError(actionError)}</p>
+        </div>
+      ) : null}
+
+      {failedConfidenceIds.length > 0 && !actionError ? (
+        <div className="flex items-center justify-between gap-3 rounded border border-0.5 border-amber-300/60 bg-amber-50 p-4">
+          <div className="flex items-center gap-2">
+            <AlertTriangle aria-hidden="true" className="h-4 w-4 shrink-0 text-amber-600" />
+            <p className="font-body text-sm text-amber-800">
+              Entities published, but confidence scores could not be updated. Graph weights may be
+              stale until recomputed.
+            </p>
+          </div>
+          <Button
+            disabled={retryConfidenceMutation.isPending}
+            size="sm"
+            type="button"
+            variant="outline"
+            onClick={() => retryConfidenceMutation.mutate(failedConfidenceIds)}
+          >
+            <RefreshCw
+              aria-hidden="true"
+              className={cn('h-3.5 w-3.5', retryConfidenceMutation.isPending && 'animate-spin')}
+            />
+            Retry
+          </Button>
         </div>
       ) : null}
 

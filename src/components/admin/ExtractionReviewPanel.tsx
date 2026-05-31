@@ -34,6 +34,7 @@ import {
   type SaveEntityReviewInput,
 } from '@/lib/api/admin'
 import { cn } from '@/lib/utils'
+import { enrichSplitError, findHighlightSpan, validateClaimInput, validateEntityInput } from '@/lib/reviewUtils'
 
 interface ExtractionReviewPanelProps {
   group: ReviewSourceGroup
@@ -124,41 +125,23 @@ const highlightPassage = (text: string, passage: string) => {
     return text
   }
 
-  const startIndex = text.toLowerCase().indexOf(trimmedPassage.toLowerCase())
+  const span = findHighlightSpan(text, trimmedPassage)
 
-  if (startIndex === -1) {
+  if (!span) {
     return text
   }
 
+  const [start, end] = span
+
   return (
     <>
-      {text.slice(0, startIndex)}
+      {text.slice(0, start)}
       <mark className="rounded-sm bg-verdigris-light px-1 text-verdigris-dark">
-        {text.slice(startIndex, startIndex + trimmedPassage.length)}
+        {text.slice(start, end)}
       </mark>
-      {text.slice(startIndex + trimmedPassage.length)}
+      {text.slice(end)}
     </>
   )
-}
-
-const validateEntityInput = (value: SaveEntityReviewInput | null) => {
-  if (!value || !value.name.trim()) {
-    return 'Entity name is required.'
-  }
-
-  return null
-}
-
-const validateClaimInput = (value: SaveClaimReviewInput | null) => {
-  if (!value || !value.statement.trim()) {
-    return 'Claim statement is required.'
-  }
-
-  if (value.entitiesInvolved.length === 0) {
-    return 'At least one involved entity is required.'
-  }
-
-  return null
 }
 
 const Textarea = ({ className, ...props }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) => {
@@ -514,7 +497,7 @@ export const ExtractionReviewPanel = ({ group, onReviewed }: ExtractionReviewPan
                   </p>
                   <pre className="mt-1 max-h-64 overflow-auto rounded border border-0.5 border-black/[0.09] bg-stone p-3 font-mono text-[11px] text-ink">
                     {selectedValidationExtraction.validationRawResponse ??
-                      'Raw response is stored on another row in this failed batch or was not captured.'}
+                      'Raw response was not captured for this extraction.'}
                   </pre>
                 </div>
               </div>
@@ -819,9 +802,16 @@ export const ExtractionReviewPanel = ({ group, onReviewed }: ExtractionReviewPan
           {reviewMutation.error ? (
             <div className="mt-4 rounded border border-0.5 border-terracotta/30 bg-terracotta-light p-3">
               <p className="font-body text-sm text-terracotta-dark">
-                {reviewMutation.error instanceof Error
-                  ? reviewMutation.error.message
-                  : 'Review action failed.'}
+                {(() => {
+                  const raw =
+                    reviewMutation.error instanceof Error
+                      ? reviewMutation.error.message
+                      : 'Review action failed.'
+                  if (mode === 'split' && splitDraft) {
+                    return enrichSplitError(raw, splitDraft.first.name, splitDraft.second.name)
+                  }
+                  return raw
+                })()}
               </p>
             </div>
           ) : null}
