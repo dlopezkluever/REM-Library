@@ -405,6 +405,7 @@ export type Database = {
           status: Database['public']['Enums']['content_status']
           tier: Database['public']['Enums']['source_tier']
           title: string
+          transcript_id: string | null
           updated_at: string
           url: string | null
         }
@@ -423,6 +424,7 @@ export type Database = {
           status?: Database['public']['Enums']['content_status']
           tier: Database['public']['Enums']['source_tier']
           title: string
+          transcript_id?: string | null
           updated_at?: string
           url?: string | null
         }
@@ -441,6 +443,7 @@ export type Database = {
           status?: Database['public']['Enums']['content_status']
           tier?: Database['public']['Enums']['source_tier']
           title?: string
+          transcript_id?: string | null
           updated_at?: string
           url?: string | null
         }
@@ -471,6 +474,7 @@ export type Database = {
           status: Database['public']['Enums']['content_status']
           tier: Database['public']['Enums']['source_tier']
           title: string
+          transcript_id: string | null
           updated_at: string
           url: string | null
         }[]

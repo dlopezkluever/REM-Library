@@ -405,6 +405,7 @@ export const getAdminSourceListRows = async (): Promise<AdminSourceListRow[]> =>
       status: row.status,
       tier: row.tier,
       title: row.title,
+      transcript_id: row.transcript_id,
       updated_at: row.updated_at,
       url: row.url,
     }
@@ -580,6 +581,7 @@ const isAdminSourceRow = (value: unknown): value is AdminSourceRow => {
     typeof value.created_at === 'string' &&
     typeof value.updated_at === 'string' &&
     typeof value.pipeline_stage_entered_at === 'string' &&
+    isNullableString(value.transcript_id) &&
     isNullableString(value.description)
   )
 }
