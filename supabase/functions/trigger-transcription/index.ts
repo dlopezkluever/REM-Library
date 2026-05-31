@@ -2,12 +2,15 @@ import {
   corsHeaders,
   createServiceClient,
   errorMessage,
+  failSourceStage,
   getBooleanFlag,
   getSourceId,
+  invokeInternalFunction,
   jsonResponse,
   readJsonBody,
   requireAdminOrServiceRole,
   requireEnv,
+  runInBackground,
   updateSourceStage,
   type SourceRow,
 } from '../_shared/pipeline.ts'
@@ -55,10 +58,35 @@ const getWebhookUrl = () => {
   return `${requireEnv('SUPABASE_URL')}/functions/v1/assemblyai-webhook`
 }
 
+const getWebhookSecret = () => {
+  const webhookSecret = Deno.env.get('ASSEMBLYAI_WEBHOOK_SECRET')
+  const allowUnsignedWebhooks = Deno.env.get('ALLOW_UNSIGNED_ASSEMBLYAI_WEBHOOKS') === 'true'
+
+  if (!webhookSecret && !allowUnsignedWebhooks) {
+    throw new Error('ASSEMBLYAI_WEBHOOK_SECRET is required.')
+  }
+
+  return webhookSecret
+}
+
+const isAssemblyAiSourceFormat = (format: string) => {
+  return format === 'audio' || format === 'video'
+}
+
+const queueChunking = (sourceId: string) => {
+  const supabase = createServiceClient()
+  runInBackground(
+    invokeInternalFunction('trigger-chunking', { source_id: sourceId }).catch(async (error) => {
+      await failSourceStage(supabase, sourceId, 'chunking_failed', error).catch(() => undefined)
+      throw error
+    })
+  )
+}
+
 const submitTranscript = async (audioUrl: string) => {
   const webhookHeaderName =
     Deno.env.get('ASSEMBLYAI_WEBHOOK_HEADER_NAME') ?? 'x-assemblyai-webhook-secret'
-  const webhookSecret = Deno.env.get('ASSEMBLYAI_WEBHOOK_SECRET')
+  const webhookSecret = getWebhookSecret()
   const payload: Record<string, unknown> = {
     audio_url: audioUrl,
     format_text: true,
@@ -116,7 +144,7 @@ Deno.serve(async (request) => {
 
     const { data: source, error: sourceError } = await supabase
       .from('sources')
-      .select('id,file_path,format,pipeline_stage,status,transcript_id,url')
+      .select('id,file_path,format,pipeline_error,pipeline_stage,status,transcript_id,url')
       .eq('id', sourceId)
       .single<SourceRow>()
 
@@ -132,7 +160,9 @@ Deno.serve(async (request) => {
       source.pipeline_stage !== 'transcribing_failed'
 
     if (shouldReuseTranscript) {
+      queueChunking(source.id)
       return jsonResponse({
+        chunking_queued: true,
         pipeline_stage: source.pipeline_stage,
         reused: true,
         source_id: source.id,
@@ -140,8 +170,29 @@ Deno.serve(async (request) => {
       })
     }
 
+    if (!isAssemblyAiSourceFormat(source.format)) {
+      await failSourceStage(
+        supabase,
+        source.id,
+        'transcribing_failed',
+        'AssemblyAI transcription is only available for audio and video sources.'
+      )
+      return jsonResponse(
+        {
+          error: 'AssemblyAI transcription is only available for audio and video sources.',
+          source_id: source.id,
+        },
+        400
+      )
+    }
+
     if (!source.file_path) {
-      await updateSourceStage(supabase, source.id, 'transcribing_failed')
+      await failSourceStage(
+        supabase,
+        source.id,
+        'transcribing_failed',
+        'This source does not have a stored file to transcribe.'
+      )
       return jsonResponse(
         {
           error: 'This source does not have a stored file to transcribe.',
@@ -172,7 +223,7 @@ Deno.serve(async (request) => {
     })
   } catch (error) {
     if (sourceId && canUpdateSource) {
-      await updateSourceStage(supabase, sourceId, 'transcribing_failed').catch(() => undefined)
+      await failSourceStage(supabase, sourceId, 'transcribing_failed', error).catch(() => undefined)
     }
 
     return jsonResponse({ error: errorMessage(error) }, 500)
