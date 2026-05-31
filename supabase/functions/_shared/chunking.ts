@@ -1,4 +1,4 @@
-import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.106.1'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 import { requireEnv, updateSourceStage, type SourceRow } from './pipeline.ts'
 
