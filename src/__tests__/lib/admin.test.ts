@@ -32,6 +32,7 @@ const createSource = (
   status: 'draft',
   tier: 'primary',
   title: `Source ${id}`,
+  transcript_id: null,
   updated_at: createdAt,
   url: null,
   ...overrides,
