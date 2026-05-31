@@ -14,6 +14,7 @@ import AdminLoginPage from '@/pages/admin/AdminLoginPage'
 import AdminDashboardPage from '@/pages/admin/AdminDashboardPage'
 import AdminSourceListPage from '@/pages/admin/AdminSourceListPage'
 import AdminSourceNewPage from '@/pages/admin/AdminSourceNewPage'
+import AdminSourceDetailPage from '@/pages/admin/AdminSourceDetailPage'
 import AdminReviewQueuePage from '@/pages/admin/AdminReviewQueuePage'
 import AdminEntityManagerPage from '@/pages/admin/AdminEntityManagerPage'
 import AdminClaimManagerPage from '@/pages/admin/AdminClaimManagerPage'
@@ -55,6 +56,7 @@ export const router = createBrowserRouter([
           { path: '/admin/dashboard', element: <AdminDashboardPage /> },
           { path: '/admin/sources', element: <AdminSourceListPage /> },
           { path: '/admin/sources/new', element: <AdminSourceNewPage /> },
+          { path: '/admin/sources/:id', element: <AdminSourceDetailPage /> },
           { path: '/admin/review', element: <AdminReviewQueuePage /> },
           { path: '/admin/entities', element: <AdminEntityManagerPage /> },
           { path: '/admin/claims', element: <AdminClaimManagerPage /> },
