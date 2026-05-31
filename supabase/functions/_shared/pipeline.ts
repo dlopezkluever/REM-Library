@@ -1,4 +1,4 @@
-import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2.106.1'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
 export const corsHeaders = {
   'Access-Control-Allow-Headers':
