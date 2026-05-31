@@ -1,7 +1,8 @@
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2.106.1'
 
 export const corsHeaders = {
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers':
+    'authorization, x-client-info, apikey, content-type, x-assemblyai-webhook-secret',
   'Access-Control-Allow-Origin': '*',
 }
 
@@ -21,10 +22,15 @@ export interface SourceRow {
   file_path: string | null
   format: string
   id: string
+  pipeline_error?: string | null
   pipeline_stage: PipelineStage
   status: string
   transcript_id: string | null
   url: string | null
+}
+
+interface EdgeRuntimeGlobal {
+  waitUntil: (promise: Promise<unknown>) => void
 }
 
 export const jsonResponse = (body: unknown, status = 200) => {
@@ -103,14 +109,34 @@ export const updateSourceStage = async (
   stage: PipelineStage,
   extraValues: Record<string, unknown> = {}
 ) => {
+  const nextValues: Record<string, unknown> = {
+    ...extraValues,
+    pipeline_stage: stage,
+  }
+
+  if (!stage.endsWith('_failed') && !('pipeline_error' in nextValues)) {
+    nextValues.pipeline_error = null
+  }
+
   const { error } = await supabase
     .from('sources')
-    .update({ ...extraValues, pipeline_stage: stage })
+    .update(nextValues)
     .eq('id', sourceId)
 
   if (error) {
     throw error
   }
+}
+
+export const failSourceStage = async (
+  supabase: SupabaseClient,
+  sourceId: string,
+  stage: Extract<PipelineStage, 'transcribing_failed' | 'chunking_failed' | 'extracting_failed'>,
+  error: unknown
+) => {
+  await updateSourceStage(supabase, sourceId, stage, {
+    pipeline_error: errorMessage(error),
+  })
 }
 
 export const invokeInternalFunction = async (functionName: string, body: unknown) => {
@@ -130,6 +156,21 @@ export const invokeInternalFunction = async (functionName: string, body: unknown
     const responseText = await response.text()
     throw new Error(`${functionName} returned ${response.status}: ${responseText}`)
   }
+}
+
+export const runInBackground = (promise: Promise<unknown>) => {
+  const runtime = (globalThis as typeof globalThis & { EdgeRuntime?: EdgeRuntimeGlobal })
+    .EdgeRuntime
+  const guardedPromise = promise.catch((error) => {
+    console.error(errorMessage(error))
+  })
+
+  if (runtime) {
+    runtime.waitUntil(guardedPromise)
+    return
+  }
+
+  void guardedPromise
 }
 
 export const readJsonBody = async (request: Request) => {
@@ -163,5 +204,13 @@ export const getBooleanFlag = (body: unknown, key: string) => {
 }
 
 export const errorMessage = (error: unknown) => {
-  return error instanceof Error ? error.message : 'Unexpected pipeline error.'
+  if (error instanceof Error) {
+    return error.message
+  }
+
+  if (typeof error === 'string' && error.trim()) {
+    return error
+  }
+
+  return 'Unexpected pipeline error.'
 }
