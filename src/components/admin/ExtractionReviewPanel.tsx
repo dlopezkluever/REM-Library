@@ -1,11 +1,29 @@
 import { useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { Check, GitMerge, ListChecks, Pencil, Scissors, Search, X } from 'lucide-react'
+import {
+  AlertTriangle,
+  Check,
+  GitMerge,
+  ListChecks,
+  Pencil,
+  Scissors,
+  Search,
+  X,
+} from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { ENTITY_LABELS } from '@/constants/entityTypes'
 import {
+  rejectFailedExtraction,
   reviewExtractionItem,
   searchAdminEntities,
   type ReviewClaimItem,
@@ -23,6 +41,7 @@ interface ExtractionReviewPanelProps {
 }
 
 type Mode = 'view' | 'edit' | 'merge' | 'split'
+const validationItemId = '__validation_failed__'
 
 const entityTypeOptions = ['symbol', 'figure', 'narrative', 'culture', 'trope'] as const
 const relationshipTypeOptions = [
@@ -64,6 +83,22 @@ const findSelection = (
   return null
 }
 
+const findValidationSelection = (
+  group: ReviewSourceGroup,
+  selection: { extractionId: string; itemId: string } | null
+) => {
+  if (selection?.itemId !== validationItemId) {
+    return null
+  }
+
+  return (
+    group.extractions.find(
+      (extraction) =>
+        extraction.extraction.id === selection.extractionId && extraction.validationFailed
+    ) ?? null
+  )
+}
+
 const itemTitle = (item: ReviewItem) => {
   return item.kind === 'entity' ? item.name : item.statement
 }
@@ -71,7 +106,7 @@ const itemTitle = (item: ReviewItem) => {
 const itemSubtitle = (item: ReviewItem) => {
   return item.kind === 'entity'
     ? ENTITY_LABELS[item.type]
-    : `${item.relationshipType.replace(/_/g, ' ')} · ${item.entitiesInvolved.join(', ')}`
+    : `${item.relationshipType.replace(/_/g, ' ')} - ${item.entitiesInvolved.join(', ')}`
 }
 
 const getPassage = (item: ReviewItem) => {
@@ -104,6 +139,26 @@ const highlightPassage = (text: string, passage: string) => {
       {text.slice(startIndex + trimmedPassage.length)}
     </>
   )
+}
+
+const validateEntityInput = (value: SaveEntityReviewInput | null) => {
+  if (!value || !value.name.trim()) {
+    return 'Entity name is required.'
+  }
+
+  return null
+}
+
+const validateClaimInput = (value: SaveClaimReviewInput | null) => {
+  if (!value || !value.statement.trim()) {
+    return 'Claim statement is required.'
+  }
+
+  if (value.entitiesInvolved.length === 0) {
+    return 'At least one involved entity is required.'
+  }
+
+  return null
 }
 
 const Textarea = ({ className, ...props }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) => {
@@ -242,6 +297,7 @@ export const ExtractionReviewPanel = ({ group, onReviewed }: ExtractionReviewPan
   const [entityEdit, setEntityEdit] = useState<SaveEntityReviewInput | null>(null)
   const [claimEdit, setClaimEdit] = useState<SaveClaimReviewInput | null>(null)
   const [mergeSearch, setMergeSearch] = useState('')
+  const [rejectDialogOpen, setRejectDialogOpen] = useState(false)
   const [splitDraft, setSplitDraft] = useState<{
     first: SaveEntityReviewInput
     second: SaveEntityReviewInput
@@ -249,10 +305,28 @@ export const ExtractionReviewPanel = ({ group, onReviewed }: ExtractionReviewPan
 
   const currentSelection = findSelection(group, selection)
     ? selection
-    : getFirstPendingSelection(group)
+    : findValidationSelection(group, selection)
+      ? selection
+      : getFirstPendingSelection(group)
   const selected = findSelection(group, currentSelection)
+  const selectedValidationExtraction =
+    findValidationSelection(group, currentSelection) ??
+    (!selected
+      ? (group.extractions.find((extraction) => extraction.validationFailed) ?? null)
+      : null)
   const selectedItem = selected?.item ?? null
   const selectedExtraction = selected?.extraction ?? null
+  const editValidation =
+    mode === 'edit' && selectedItem?.kind === 'entity'
+      ? validateEntityInput(entityEdit)
+      : mode === 'edit' && selectedItem?.kind === 'claim'
+        ? validateClaimInput(claimEdit)
+        : null
+  const splitValidation =
+    mode === 'split'
+      ? (validateEntityInput(splitDraft?.first ?? null) ??
+        validateEntityInput(splitDraft?.second ?? null))
+      : null
 
   const mergeResultsQuery = useQuery({
     enabled: mode === 'merge' && mergeSearch.trim().length > 1,
@@ -264,6 +338,15 @@ export const ExtractionReviewPanel = ({ group, onReviewed }: ExtractionReviewPan
     mutationFn: reviewExtractionItem,
     onSuccess: () => {
       setMode('view')
+      setRejectDialogOpen(false)
+      onReviewed()
+    },
+  })
+
+  const rejectFailedMutation = useMutation({
+    mutationFn: rejectFailedExtraction,
+    onSuccess: () => {
+      setRejectDialogOpen(false)
       onReviewed()
     },
   })
@@ -283,6 +366,10 @@ export const ExtractionReviewPanel = ({ group, onReviewed }: ExtractionReviewPan
 
   const submitEdit = () => {
     if (!selectedItem || !selectedExtraction) {
+      return
+    }
+
+    if (editValidation) {
       return
     }
 
@@ -314,6 +401,10 @@ export const ExtractionReviewPanel = ({ group, onReviewed }: ExtractionReviewPan
       return
     }
 
+    if (splitValidation) {
+      return
+    }
+
     reviewMutation.mutate({
       action: 'split',
       extractionId: selectedExtraction.extraction.id,
@@ -324,6 +415,165 @@ export const ExtractionReviewPanel = ({ group, onReviewed }: ExtractionReviewPan
   }
 
   if (!selectedItem || !selectedExtraction) {
+    if (selectedValidationExtraction) {
+      const rejectError = rejectFailedMutation.error
+
+      return (
+        <section className="grid gap-4 xl:grid-cols-[260px_minmax(0,1fr)]">
+          <aside className="rounded border border-0.5 border-black/[0.09] bg-white">
+            <div className="border-b border-b-0.5 border-b-black/[0.06] p-4">
+              <h2 className="font-display text-[10px] uppercase tracking-label text-ink">
+                Pending Items
+              </h2>
+              <p className="mt-1 font-body text-xs text-[#777]">
+                {group.pendingItemCount} awaiting review
+              </p>
+            </div>
+            <div className="max-h-[620px] overflow-y-auto">
+              {group.extractions
+                .filter((extraction) => extraction.validationFailed)
+                .map((extraction) => {
+                  const active =
+                    selectedValidationExtraction.extraction.id === extraction.extraction.id
+
+                  return (
+                    <button
+                      key={extraction.extraction.id}
+                      className={cn(
+                        'block w-full border-b border-b-0.5 border-b-black/[0.06] px-4 py-3 text-left transition-colors last:border-b-0',
+                        active
+                          ? 'bg-terracotta-light text-terracotta-dark'
+                          : 'hover:bg-black/[0.03]'
+                      )}
+                      type="button"
+                      onClick={() =>
+                        setSelection({
+                          extractionId: extraction.extraction.id,
+                          itemId: validationItemId,
+                        })
+                      }
+                    >
+                      <p className="font-display text-[8px] uppercase tracking-label">
+                        Validation Failed
+                      </p>
+                      <p className="mt-1 font-body text-[11px] text-[#777]">
+                        Chunk {extraction.chunk.chunk_index + 1}
+                      </p>
+                    </button>
+                  )
+                })}
+            </div>
+          </aside>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <article className="rounded border border-0.5 border-black/[0.09] bg-white p-5">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="font-display text-[10px] uppercase tracking-label text-ink">
+                    Source Passage
+                  </h2>
+                  <p className="mt-1 font-body text-xs text-[#777]">
+                    Chunk {selectedValidationExtraction.chunk.chunk_index + 1}
+                  </p>
+                </div>
+                <Badge variant="outline">
+                  {selectedValidationExtraction.chunk.speaker ?? 'Source'}
+                </Badge>
+              </div>
+              <p className="whitespace-pre-wrap font-body text-sm leading-reading text-ink">
+                {selectedValidationExtraction.chunk.raw_text}
+              </p>
+            </article>
+
+            <article className="rounded border border-0.5 border-terracotta/30 bg-white p-5">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="font-display text-[10px] uppercase tracking-label text-ink">
+                    Validation Failure
+                  </h2>
+                  <p className="mt-1 font-body text-xs text-[#777]">
+                    Provider output did not match the extraction schema.
+                  </p>
+                </div>
+                <AlertTriangle aria-hidden="true" className="h-4 w-4 text-terracotta" />
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <p className="font-display text-[8px] uppercase tracking-label text-[#777]">
+                    Error
+                  </p>
+                  <p className="mt-1 whitespace-pre-wrap font-body text-sm leading-reading text-ink">
+                    {selectedValidationExtraction.validationError ??
+                      'No validation error recorded.'}
+                  </p>
+                </div>
+                <div>
+                  <p className="font-display text-[8px] uppercase tracking-label text-[#777]">
+                    Raw Response
+                  </p>
+                  <pre className="mt-1 max-h-64 overflow-auto rounded border border-0.5 border-black/[0.09] bg-stone p-3 font-mono text-[11px] text-ink">
+                    {selectedValidationExtraction.validationRawResponse ??
+                      'Raw response is stored on another row in this failed batch or was not captured.'}
+                  </pre>
+                </div>
+              </div>
+
+              {rejectError ? (
+                <div className="mt-4 rounded border border-0.5 border-terracotta/30 bg-terracotta-light p-3">
+                  <p className="font-body text-sm text-terracotta-dark">
+                    {rejectError instanceof Error ? rejectError.message : 'Reject action failed.'}
+                  </p>
+                </div>
+              ) : null}
+
+              <div className="mt-5 flex justify-end">
+                <Button
+                  disabled={rejectFailedMutation.isPending}
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                  onClick={() => setRejectDialogOpen(true)}
+                >
+                  <X aria-hidden="true" className="h-3.5 w-3.5" />
+                  Reject failed extraction
+                </Button>
+              </div>
+
+              <Dialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Reject Failed Extraction</DialogTitle>
+                    <DialogDescription>
+                      Remove this validation-failed extraction from the pending review queue?
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="mt-5 flex justify-end gap-3">
+                    <DialogClose asChild>
+                      <Button type="button" variant="outline">
+                        Cancel
+                      </Button>
+                    </DialogClose>
+                    <Button
+                      disabled={rejectFailedMutation.isPending}
+                      type="button"
+                      variant="outline"
+                      onClick={() =>
+                        rejectFailedMutation.mutate(selectedValidationExtraction.extraction.id)
+                      }
+                    >
+                      <X aria-hidden="true" className="h-4 w-4" />
+                      Reject
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </article>
+          </div>
+        </section>
+      )
+    }
+
     return (
       <section className="rounded border border-0.5 border-black/[0.09] bg-white p-5">
         <p className="font-body text-sm text-[#777]">
@@ -379,6 +629,29 @@ export const ExtractionReviewPanel = ({ group, onReviewed }: ExtractionReviewPan
                     </button>
                   )
                 })}
+                {extraction.validationFailed ? (
+                  <button
+                    className={cn(
+                      'mt-1 block w-full rounded px-3 py-2 text-left transition-colors',
+                      currentSelection?.extractionId === extraction.extraction.id &&
+                        currentSelection.itemId === validationItemId
+                        ? 'bg-terracotta-light text-terracotta-dark'
+                        : 'hover:bg-black/[0.03]'
+                    )}
+                    type="button"
+                    onClick={() =>
+                      setSelection({
+                        extractionId: extraction.extraction.id,
+                        itemId: validationItemId,
+                      })
+                    }
+                  >
+                    <p className="font-body text-sm text-ink">Validation failed</p>
+                    <p className="mt-1 font-body text-[11px] text-[#777]">
+                      Inspect provider response
+                    </p>
+                  </button>
+                ) : null}
               </div>
             </div>
           ))}
@@ -553,6 +826,14 @@ export const ExtractionReviewPanel = ({ group, onReviewed }: ExtractionReviewPan
             </div>
           ) : null}
 
+          {editValidation || splitValidation ? (
+            <div className="mt-4 rounded border border-0.5 border-terracotta/30 bg-terracotta-light p-3">
+              <p className="font-body text-sm text-terracotta-dark">
+                {editValidation ?? splitValidation}
+              </p>
+            </div>
+          ) : null}
+
           <div className="mt-5 flex flex-wrap justify-end gap-2">
             {mode === 'edit' ? (
               <>
@@ -561,7 +842,7 @@ export const ExtractionReviewPanel = ({ group, onReviewed }: ExtractionReviewPan
                   Cancel
                 </Button>
                 <Button
-                  disabled={reviewMutation.isPending}
+                  disabled={reviewMutation.isPending || Boolean(editValidation)}
                   size="sm"
                   type="button"
                   onClick={submitEdit}
@@ -578,7 +859,7 @@ export const ExtractionReviewPanel = ({ group, onReviewed }: ExtractionReviewPan
                   Cancel
                 </Button>
                 <Button
-                  disabled={reviewMutation.isPending}
+                  disabled={reviewMutation.isPending || Boolean(splitValidation)}
                   size="sm"
                   type="button"
                   onClick={submitSplit}
@@ -601,7 +882,7 @@ export const ExtractionReviewPanel = ({ group, onReviewed }: ExtractionReviewPan
                   size="sm"
                   type="button"
                   variant="outline"
-                  onClick={submitReject}
+                  onClick={() => setRejectDialogOpen(true)}
                 >
                   <X aria-hidden="true" className="h-3.5 w-3.5" />
                   Reject
@@ -672,6 +953,33 @@ export const ExtractionReviewPanel = ({ group, onReviewed }: ExtractionReviewPan
               </>
             ) : null}
           </div>
+
+          <Dialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Reject Extraction</DialogTitle>
+                <DialogDescription>
+                  Reject this extraction item? No entity, claim, or evidence record will be created.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="mt-5 flex justify-end gap-3">
+                <DialogClose asChild>
+                  <Button type="button" variant="outline">
+                    Cancel
+                  </Button>
+                </DialogClose>
+                <Button
+                  disabled={reviewMutation.isPending}
+                  type="button"
+                  variant="outline"
+                  onClick={submitReject}
+                >
+                  <X aria-hidden="true" className="h-4 w-4" />
+                  Reject
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
         </article>
       </div>
     </section>

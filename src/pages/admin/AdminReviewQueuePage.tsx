@@ -5,10 +5,10 @@ import { ChevronDown, ChevronRight, RefreshCw } from 'lucide-react'
 import { ExtractionReviewPanel } from '@/components/admin/ExtractionReviewPanel'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { getPendingExtractionReviewSources } from '@/lib/api/admin'
+import { getPendingExtractionReviewSource, getPendingReviewSourceSummaries } from '@/lib/api/admin'
 import { cn } from '@/lib/utils'
 
-const reviewQueueQueryKey = ['admin', 'review-queue'] as const
+const reviewQueueQueryKey = ['admin', 'review-queue', 'sources'] as const
 
 export default function AdminReviewQueuePage() {
   const [searchParams] = useSearchParams()
@@ -16,15 +16,22 @@ export default function AdminReviewQueuePage() {
   const queryClient = useQueryClient()
   const reviewQueueQuery = useQuery({
     queryKey: reviewQueueQueryKey,
-    queryFn: getPendingExtractionReviewSources,
+    queryFn: () => getPendingReviewSourceSummaries(),
   })
-  const groups = useMemo(() => reviewQueueQuery.data ?? [], [reviewQueueQuery.data])
+  const summaries = useMemo(() => reviewQueueQuery.data ?? [], [reviewQueueQuery.data])
   const [expandedSourceId, setExpandedSourceId] = useState<string | null>(requestedSourceId)
 
-  const activeSourceId = requestedSourceId ?? expandedSourceId ?? groups[0]?.source.id ?? null
-  const selectedGroup = useMemo(() => {
-    return groups.find((group) => group.source.id === activeSourceId) ?? groups[0] ?? null
-  }, [activeSourceId, groups])
+  const activeSourceId = requestedSourceId ?? expandedSourceId ?? summaries[0]?.source.id ?? null
+  const selectedSummary = useMemo(() => {
+    return summaries.find((group) => group.source.id === activeSourceId) ?? summaries[0] ?? null
+  }, [activeSourceId, summaries])
+  const selectedSourceId = selectedSummary?.source.id ?? activeSourceId
+  const selectedSourceQuery = useQuery({
+    enabled: Boolean(selectedSourceId),
+    queryKey: ['admin', 'review-queue', 'source', selectedSourceId],
+    queryFn: () => getPendingExtractionReviewSource(selectedSourceId ?? ''),
+  })
+  const selectedGroup = selectedSourceQuery.data ?? null
 
   return (
     <div className="space-y-6">
@@ -68,24 +75,24 @@ export default function AdminReviewQueuePage() {
           <div className="px-4 py-5 font-body text-sm text-[#777]">Loading review queue...</div>
         ) : null}
 
-        {!reviewQueueQuery.isLoading && !reviewQueueQuery.error && groups.length === 0 ? (
+        {!reviewQueueQuery.isLoading && !reviewQueueQuery.error && summaries.length === 0 ? (
           <div className="px-4 py-5 font-body text-sm text-[#777]">
             No extractions are awaiting review.
           </div>
         ) : null}
 
-        {groups.map((group) => {
-          const expanded = group.source.id === selectedGroup?.source.id
+        {summaries.map((summary) => {
+          const expanded = summary.source.id === selectedSourceId
 
           return (
             <button
-              key={group.source.id}
+              key={summary.source.id}
               className={cn(
                 'grid w-full grid-cols-[minmax(0,1fr)_120px] items-center border-b border-b-0.5 border-b-black/[0.06] px-4 py-3 text-left transition-colors last:border-b-0 hover:bg-black/[0.03]',
                 expanded && 'bg-verdigris-light/50'
               )}
               type="button"
-              onClick={() => setExpandedSourceId(group.source.id)}
+              onClick={() => setExpandedSourceId(summary.source.id)}
             >
               <div className="flex min-w-0 items-center gap-3">
                 {expanded ? (
@@ -94,19 +101,36 @@ export default function AdminReviewQueuePage() {
                   <ChevronRight aria-hidden="true" className="h-4 w-4 shrink-0 text-[#888]" />
                 )}
                 <div className="min-w-0">
-                  <p className="truncate font-body text-sm text-ink">{group.source.title}</p>
+                  <p className="truncate font-body text-sm text-ink">{summary.source.title}</p>
                   <p className="font-body text-[11px] text-[#888]">
-                    {group.extractions.length} extraction chunks
+                    {summary.pendingExtractionCount} extraction chunks
+                    {summary.validationFailedCount > 0
+                      ? ` - ${summary.validationFailedCount} failed validation`
+                      : ''}
                   </p>
                 </div>
               </div>
               <div className="flex justify-end">
-                <Badge>{group.extractions.length}</Badge>
+                <Badge>{summary.pendingItemCount + summary.validationFailedCount}</Badge>
               </div>
             </button>
           )
         })}
       </section>
+
+      {selectedSourceQuery.isLoading ? (
+        <div className="rounded border border-0.5 border-black/[0.09] bg-white p-5">
+          <p className="font-body text-sm text-[#777]">Loading selected source...</p>
+        </div>
+      ) : null}
+
+      {selectedSourceQuery.error ? (
+        <div className="rounded border border-0.5 border-terracotta/30 bg-terracotta-light p-4">
+          <p className="font-body text-sm text-terracotta-dark">
+            Selected source review items could not load.
+          </p>
+        </div>
+      ) : null}
 
       {selectedGroup ? (
         <ExtractionReviewPanel
@@ -114,6 +138,9 @@ export default function AdminReviewQueuePage() {
           group={selectedGroup}
           onReviewed={() => {
             void queryClient.invalidateQueries({ queryKey: reviewQueueQueryKey })
+            void queryClient.invalidateQueries({
+              queryKey: ['admin', 'review-queue', 'source', selectedGroup.source.id],
+            })
             void queryClient.invalidateQueries({ queryKey: ['admin', 'source-list'] })
             void queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard-counts'] })
             void queryClient.invalidateQueries({ queryKey: ['admin', 'content-stats'] })
