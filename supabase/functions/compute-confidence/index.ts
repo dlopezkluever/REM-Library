@@ -12,6 +12,18 @@ interface ClaimEntityRow {
 }
 
 interface ClaimEvidenceRow {
+  claims?: {
+    status: string
+  } | null
+  source_anchors: {
+    sources: {
+      status: string
+      tier: string
+    } | null
+  } | null
+}
+
+interface EntityEvidenceRow {
   source_anchors: {
     sources: {
       status: string
@@ -25,6 +37,21 @@ interface EntityScore {
   score: number
 }
 
+interface RelationshipRow {
+  from_entity_id: string
+  id: string
+  to_entity_id: string
+}
+
+interface EntityScoreRow {
+  confidence_override: number | null
+  confidence_score: number
+  id: string
+}
+
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const maxEntityIdsPerRequest = 200
+
 const getEntityIds = (body: unknown) => {
   if (typeof body !== 'object' || body === null || !('entity_ids' in body)) {
     throw new Error('entity_ids is required.')
@@ -37,11 +64,19 @@ const getEntityIds = (body: unknown) => {
   }
 
   const uniqueIds = Array.from(
-    new Set(entityIds.filter((entityId): entityId is string => typeof entityId === 'string'))
+    new Set(
+      entityIds.filter((entityId): entityId is string => {
+        return typeof entityId === 'string' && uuidPattern.test(entityId)
+      })
+    )
   )
 
   if (uniqueIds.length === 0) {
-    throw new Error('entity_ids must include at least one entity id.')
+    throw new Error('entity_ids must include at least one valid entity id.')
+  }
+
+  if (uniqueIds.length > maxEntityIdsPerRequest) {
+    throw new Error(`entity_ids cannot include more than ${maxEntityIdsPerRequest} ids.`)
   }
 
   return uniqueIds
@@ -51,7 +86,10 @@ const clampScore = (score: number) => Math.max(0, Math.min(1, Number(score.toFix
 
 const scoreEvidence = (evidenceRows: ClaimEvidenceRow[]) => {
   const publishedEvidence = evidenceRows.filter((row) => {
-    return row.source_anchors?.sources?.status === 'published'
+    return (
+      row.source_anchors?.sources?.status === 'published' &&
+      (row.claims === undefined || row.claims?.status === 'published')
+    )
   })
   const primaryCount = publishedEvidence.filter((row) => {
     return row.source_anchors?.sources?.tier === 'primary'
@@ -84,44 +122,119 @@ const computeEntityScore = async (
 
   const claimIds = Array.from(new Set((claimLinks ?? []).map((link) => link.claim_id)))
 
-  if (claimIds.length === 0) {
-    return { entityId, score: 0 }
+  const claimEvidenceRows =
+    claimIds.length > 0
+      ? await supabase
+          .from('claim_evidence')
+          .select('claims(status),source_anchors(sources(tier,status))')
+          .in('claim_id', claimIds)
+          .returns<ClaimEvidenceRow[]>()
+      : { data: [] as ClaimEvidenceRow[], error: null }
+
+  if (claimEvidenceRows.error) {
+    throw claimEvidenceRows.error
   }
 
-  const { data: evidenceRows, error: evidenceError } = await supabase
-    .from('claim_evidence')
+  const { data: entityEvidenceRows, error: entityEvidenceError } = await supabase
+    .from('entity_source_anchors')
     .select('source_anchors(sources(tier,status))')
-    .in('claim_id', claimIds)
-    .returns<ClaimEvidenceRow[]>()
+    .eq('entity_id', entityId)
+    .returns<EntityEvidenceRow[]>()
 
-  if (evidenceError) {
-    throw evidenceError
+  if (entityEvidenceError) {
+    throw entityEvidenceError
   }
 
   return {
     entityId,
-    score: scoreEvidence(evidenceRows ?? []),
+    score: scoreEvidence([
+      ...(claimEvidenceRows.data ?? []),
+      ...(entityEvidenceRows ?? []).map((row) => ({
+        claims: undefined,
+        source_anchors: row.source_anchors,
+      })),
+    ]),
   }
+}
+
+const fetchRelationshipsForEntityIds = async (
+  supabase: ReturnType<typeof createServiceClient>,
+  entityIds: string[]
+) => {
+  const [fromResult, toResult] = await Promise.all([
+    supabase
+      .from('relationships')
+      .select('id,from_entity_id,to_entity_id')
+      .in('from_entity_id', entityIds)
+      .returns<RelationshipRow[]>(),
+    supabase
+      .from('relationships')
+      .select('id,from_entity_id,to_entity_id')
+      .in('to_entity_id', entityIds)
+      .returns<RelationshipRow[]>(),
+  ])
+
+  if (fromResult.error) {
+    throw fromResult.error
+  }
+
+  if (toResult.error) {
+    throw toResult.error
+  }
+
+  return Array.from(
+    new Map(
+      [...(fromResult.data ?? []), ...(toResult.data ?? [])].map((relationship) => [
+        relationship.id,
+        relationship,
+      ])
+    ).values()
+  )
 }
 
 const updateRelationshipWeights = async (
   supabase: ReturnType<typeof createServiceClient>,
   scores: EntityScore[]
 ) => {
-  const scoreByEntityId = new Map(scores.map((score) => [score.entityId, score.score]))
   const entityIds = scores.map((score) => score.entityId)
 
-  const { data: relationships, error: relationshipsError } = await supabase
-    .from('relationships')
-    .select('id,from_entity_id,to_entity_id,weight')
-    .or(`from_entity_id.in.(${entityIds.join(',')}),to_entity_id.in.(${entityIds.join(',')})`)
-
-  if (relationshipsError) {
-    throw relationshipsError
+  if (entityIds.length === 0) {
+    return
   }
 
+  const relationships = await fetchRelationshipsForEntityIds(supabase, entityIds)
+  const relationshipEntityIds = Array.from(
+    new Set(
+      relationships.flatMap((relationship) => [
+        relationship.from_entity_id,
+        relationship.to_entity_id,
+      ])
+    )
+  )
+
+  if (relationshipEntityIds.length === 0) {
+    return
+  }
+
+  const { data: endpointScores, error: endpointScoresError } = await supabase
+    .from('entities')
+    .select('id,confidence_score,confidence_override')
+    .in('id', relationshipEntityIds)
+    .returns<EntityScoreRow[]>()
+
+  if (endpointScoresError) {
+    throw endpointScoresError
+  }
+
+  const scoreByEntityId = new Map(
+    (endpointScores ?? []).map((entity) => [
+      entity.id,
+      entity.confidence_override ?? entity.confidence_score,
+    ])
+  )
+
   await Promise.all(
-    (relationships ?? []).map(async (relationship) => {
+    relationships.map(async (relationship) => {
       const fromScore = scoreByEntityId.get(relationship.from_entity_id)
       const toScore = scoreByEntityId.get(relationship.to_entity_id)
       const knownScores = [fromScore, toScore].filter(

@@ -54,44 +54,6 @@ interface RelevantEntity {
   name: string
 }
 
-class TokenBucketRateLimiter {
-  private lastRefillAt = Date.now()
-  private tokens: number
-
-  constructor(
-    private readonly capacity: number,
-    private readonly refillPerSecond: number
-  ) {
-    this.tokens = capacity
-  }
-
-  async take() {
-    while (true) {
-      this.refill()
-
-      if (this.tokens >= 1) {
-        this.tokens -= 1
-        return
-      }
-
-      const waitMs = Math.ceil(((1 - this.tokens) / this.refillPerSecond) * 1000)
-      await sleep(Math.max(waitMs, 1))
-    }
-  }
-
-  private refill() {
-    const now = Date.now()
-    const elapsedSeconds = (now - this.lastRefillAt) / 1000
-
-    if (elapsedSeconds <= 0) {
-      return
-    }
-
-    this.tokens = Math.min(this.capacity, this.tokens + elapsedSeconds * this.refillPerSecond)
-    this.lastRefillAt = now
-  }
-}
-
 class ProviderHttpError extends Error {
   retryable: boolean
 
@@ -145,7 +107,6 @@ const batchSize = 5
 const requestSpacingMs = 200
 const maxClaudeRetries = 3
 const defaultClaudeMaxTokens = 8192
-const claudeRateLimiter = new TokenBucketRateLimiter(5, 5)
 const retryableStatuses = new Set([408, 409, 425, 429, 500, 502, 503, 504, 529])
 
 const sleep = (milliseconds: number) => {
@@ -157,6 +118,10 @@ const sleep = (milliseconds: number) => {
 const tokenize = (text: string) => {
   const matches = text.toLowerCase().match(/[a-z0-9]+/g)
   return new Set(matches ?? [])
+}
+
+const countWords = (text: string) => {
+  return text.match(/[a-z0-9]+/gi)?.length ?? 0
 }
 
 const getRelevantEntityNames = (
@@ -374,7 +339,7 @@ const getClaudeMaxTokens = (chunks: ChunkRow[]) => {
     return configuredMaxTokens
   }
 
-  const batchWords = chunks.reduce((total, chunk) => total + tokenize(chunk.raw_text).size, 0)
+  const batchWords = chunks.reduce((total, chunk) => total + countWords(chunk.raw_text), 0)
   return Math.max(defaultClaudeMaxTokens, Math.min(16000, batchWords * 3))
 }
 
@@ -433,8 +398,6 @@ const callClaudeOnce = async (
   retryAfterMs: number | null
 }> => {
   const model = Deno.env.get('ANTHROPIC_MODEL') ?? 'claude-sonnet-4-6'
-
-  await claudeRateLimiter.take()
 
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -560,8 +523,7 @@ const withItemReviewState = (extraction: z.infer<typeof extractionSchema>) => {
 const createValidationFailedExtraction = (
   chunk: ChunkRow,
   claudeResult: ClaudeCallResult,
-  batchErrorId: string,
-  includeRawResponse: boolean
+  batchErrorId: string
 ) => {
   return {
     chunk_id: chunk.id,
@@ -572,7 +534,7 @@ const createValidationFailedExtraction = (
       entities: [],
       provider: 'anthropic',
       provider_status: claudeResult.providerStatus,
-      raw_response: includeRawResponse ? claudeResult.rawText : null,
+      raw_response: claudeResult.rawText,
       retry_count: claudeResult.retryCount,
       stop_reason: claudeResult.stopReason,
       validation_error: claudeResult.validationError,
@@ -586,11 +548,10 @@ const toExtractionRow = (
   chunk: ChunkRow,
   batchExtraction: BatchExtraction | null,
   claudeResult: ClaudeCallResult,
-  batchErrorId: string,
-  includeRawResponse: boolean
+  batchErrorId: string
 ) => {
   if (!batchExtraction) {
-    return createValidationFailedExtraction(chunk, claudeResult, batchErrorId, includeRawResponse)
+    return createValidationFailedExtraction(chunk, claudeResult, batchErrorId)
   }
 
   const extraction = batchExtraction.chunk_extractions.find((item) => {
@@ -598,7 +559,7 @@ const toExtractionRow = (
   })
 
   if (!extraction) {
-    return createValidationFailedExtraction(chunk, claudeResult, batchErrorId, includeRawResponse)
+    return createValidationFailedExtraction(chunk, claudeResult, batchErrorId)
   }
 
   const itemReviewData = withItemReviewState(extraction)
@@ -667,6 +628,7 @@ Deno.serve(async (request) => {
 
   let sourceId: string | null = null
   let canUpdateSource = false
+  let extractionStageStarted = false
   const supabase = createServiceClient()
 
   try {
@@ -705,6 +667,7 @@ Deno.serve(async (request) => {
     }
 
     await updateSourceStage(supabase, sourceId, 'extracting')
+    extractionStageStarted = true
 
     const entities = await fetchActiveEntities(supabase)
 
@@ -716,13 +679,7 @@ Deno.serve(async (request) => {
       const claudeResult = await callClaude(batch, entities)
       const batchErrorId = crypto.randomUUID()
       const extractionRows = batch.map((chunk) =>
-        toExtractionRow(
-          chunk,
-          claudeResult.parsed,
-          claudeResult,
-          batchErrorId,
-          chunk.id === batch[0]?.id
-        )
+        toExtractionRow(chunk, claudeResult.parsed, claudeResult, batchErrorId)
       )
 
       const { error: insertError } = await supabase.from('extractions').upsert(extractionRows, {
@@ -749,7 +706,7 @@ Deno.serve(async (request) => {
       source_id: sourceId,
     })
   } catch (error) {
-    if (sourceId && canUpdateSource) {
+    if (sourceId && canUpdateSource && extractionStageStarted) {
       await failSourceStage(supabase, sourceId, 'extracting_failed', error).catch(() => undefined)
     }
 
