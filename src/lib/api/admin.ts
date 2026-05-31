@@ -9,7 +9,7 @@ export interface AdminDashboardCounts {
   publishedEntities: number
   publishedClaims: number
   totalSources: number
-  pendingReview: number
+  sourcesInReview: number
 }
 
 export interface EntityTypeCount {
@@ -43,11 +43,24 @@ const confidenceBuckets = [
   { label: '0.5-0.79', min: 0.5, max: 0.8 },
   { label: '0.8-1.0', min: 0.8, max: 1.01 },
 ]
+const adminSourceMonitorLimit = 100
 
 const requireCount = (count: number | null) => count ?? 0
 
+const toCount = (value: unknown) => {
+  if (typeof value === 'number') {
+    return value
+  }
+
+  if (typeof value === 'string') {
+    return Number.parseInt(value, 10) || 0
+  }
+
+  return 0
+}
+
 export const getAdminDashboardCounts = async (): Promise<AdminDashboardCounts> => {
-  const [publishedEntities, publishedClaims, totalSources, pendingReview] = await Promise.all([
+  const [publishedEntities, publishedClaims, totalSources, sourcesInReview] = await Promise.all([
     supabase
       .from('entities')
       .select('id', { count: 'exact', head: true })
@@ -55,16 +68,16 @@ export const getAdminDashboardCounts = async (): Promise<AdminDashboardCounts> =
     supabase.from('claims').select('id', { count: 'exact', head: true }).eq('status', 'published'),
     supabase.from('sources').select('id', { count: 'exact', head: true }),
     supabase
-      .from('extractions')
+      .from('sources')
       .select('id', { count: 'exact', head: true })
-      .eq('status', 'pending'),
+      .eq('pipeline_stage', 'review'),
   ])
 
   const errors = [
     publishedEntities.error,
     publishedClaims.error,
     totalSources.error,
-    pendingReview.error,
+    sourcesInReview.error,
   ].filter(Boolean)
 
   if (errors[0]) {
@@ -75,7 +88,7 @@ export const getAdminDashboardCounts = async (): Promise<AdminDashboardCounts> =
     publishedEntities: requireCount(publishedEntities.count),
     publishedClaims: requireCount(publishedClaims.count),
     totalSources: requireCount(totalSources.count),
-    pendingReview: requireCount(pendingReview.count),
+    sourcesInReview: requireCount(sourcesInReview.count),
   }
 }
 
@@ -84,6 +97,7 @@ export const getAdminSources = async (): Promise<AdminSourceRow[]> => {
     .from('sources')
     .select('*')
     .order('created_at', { ascending: false })
+    .limit(adminSourceMonitorLimit)
 
   if (error) {
     throw error
@@ -93,39 +107,51 @@ export const getAdminSources = async (): Promise<AdminSourceRow[]> => {
 }
 
 export const getAdminContentStats = async (): Promise<AdminContentStats> => {
-  const [entitiesResult, claimsResult] = await Promise.all([
-    supabase.from('entities').select('type, status, confidence_score'),
-    supabase.from('claims').select('status, confidence_score'),
-  ])
+  const { data, error } = await supabase.rpc('get_admin_content_stats')
 
-  if (entitiesResult.error) {
-    throw entitiesResult.error
+  if (error) {
+    throw error
   }
 
-  if (claimsResult.error) {
-    throw claimsResult.error
+  if (!isObjectRecord(data)) {
+    throw new Error('Admin content stats returned an invalid payload.')
   }
 
-  const entitiesByType = entityTypes.map((type) => ({
-    type,
-    count: entitiesResult.data.filter((entity) => entity.type === type).length,
-  }))
+  const entitiesByType = entityTypes.map((type) => {
+    const match = Array.isArray(data.entitiesByType)
+      ? data.entitiesByType.find((item) => isObjectRecord(item) && item.type === type)
+      : null
 
-  const confidenceValues = [
-    ...entitiesResult.data.map((entity) => entity.confidence_score),
-    ...claimsResult.data.map((claim) => claim.confidence_score),
-  ]
+    return {
+      type,
+      count: isObjectRecord(match) ? toCount(match.count) : 0,
+    }
+  })
 
-  const confidenceDistribution = confidenceBuckets.map((bucket) => ({
-    label: bucket.label,
-    count: confidenceValues.filter((score) => score >= bucket.min && score < bucket.max).length,
-  }))
+  const confidenceDistribution = confidenceBuckets.map((bucket) => {
+    const match = Array.isArray(data.confidenceDistribution)
+      ? data.confidenceDistribution.find(
+          (item) => isObjectRecord(item) && item.label === bucket.label
+        )
+      : null
 
-  const statusCounts = contentStatuses.map((status) => ({
-    status,
-    entities: entitiesResult.data.filter((entity) => entity.status === status).length,
-    claims: claimsResult.data.filter((claim) => claim.status === status).length,
-  }))
+    return {
+      label: bucket.label,
+      count: isObjectRecord(match) ? toCount(match.count) : 0,
+    }
+  })
+
+  const statusCounts = contentStatuses.map((status) => {
+    const match = Array.isArray(data.statusCounts)
+      ? data.statusCounts.find((item) => isObjectRecord(item) && item.status === status)
+      : null
+
+    return {
+      status,
+      entities: isObjectRecord(match) ? toCount(match.entities) : 0,
+      claims: isObjectRecord(match) ? toCount(match.claims) : 0,
+    }
+  })
 
   return {
     entitiesByType,
@@ -137,8 +163,11 @@ export const getAdminContentStats = async (): Promise<AdminContentStats> => {
 const pipelineStages: Array<AdminSourceRow['pipeline_stage']> = [
   'uploaded',
   'transcribing',
+  'transcribing_failed',
   'chunking',
+  'chunking_failed',
   'extracting',
+  'extracting_failed',
   'review',
   'curated',
   'published',
@@ -199,18 +228,60 @@ const isAdminSourceRow = (value: unknown): value is AdminSourceRow => {
     isContentStatus(value.status) &&
     typeof value.created_at === 'string' &&
     typeof value.updated_at === 'string' &&
+    typeof value.pipeline_stage_entered_at === 'string' &&
     isNullableString(value.description)
   )
 }
 
-export const subscribeToSourceUpdates = (handler: (source: AdminSourceRow) => void) => {
+export type SourceRealtimeChange =
+  | { eventType: 'DELETE'; id: string }
+  | { eventType: 'INSERT' | 'UPDATE'; source: AdminSourceRow }
+
+export const sortSourcesByCreatedAt = (sources: AdminSourceRow[]) => {
+  return [...sources].sort(
+    (first, second) => new Date(second.created_at).getTime() - new Date(first.created_at).getTime()
+  )
+}
+
+export const applySourceRealtimeChange = (
+  currentSources: AdminSourceRow[] | undefined,
+  change: SourceRealtimeChange
+) => {
+  if (change.eventType === 'DELETE') {
+    return (currentSources ?? []).filter((source) => source.id !== change.id)
+  }
+
+  const sourceExists = (currentSources ?? []).some((source) => source.id === change.source.id)
+  const nextSources = sourceExists
+    ? (currentSources ?? []).map((source) =>
+        source.id === change.source.id ? change.source : source
+      )
+    : [change.source, ...(currentSources ?? [])]
+
+  return sortSourcesByCreatedAt(nextSources)
+}
+
+export const subscribeToSourceUpdates = (handler: (change: SourceRealtimeChange) => void) => {
   const channel = supabase
-    .channel('sources')
-    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'sources' }, (payload) => {
+    .channel('admin-sources-pipeline')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'sources' }, (payload) => {
+      if (payload.eventType === 'DELETE') {
+        const previousSource: unknown = payload.old
+
+        if (isObjectRecord(previousSource) && typeof previousSource.id === 'string') {
+          handler({ eventType: 'DELETE', id: previousSource.id })
+        }
+
+        return
+      }
+
       const nextSource: unknown = payload.new
 
-      if (isAdminSourceRow(nextSource)) {
-        handler(nextSource)
+      if (
+        (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') &&
+        isAdminSourceRow(nextSource)
+      ) {
+        handler({ eventType: payload.eventType, source: nextSource })
       }
     })
     .subscribe()
