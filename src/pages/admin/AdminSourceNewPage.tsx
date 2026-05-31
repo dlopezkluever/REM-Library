@@ -10,6 +10,7 @@ import {
   adminSourceTitleExists,
   createAdminSource,
   deleteSourceFile,
+  isAssemblyAiSourceFormat,
   triggerSourceTranscription,
   uploadSourceFile,
   type SourceFormat,
@@ -213,12 +214,15 @@ export default function AdminSourceNewPage() {
       let triggerError: string | null = null
       let triggerWarning: string | null = null
 
-      if (inputType === 'file') {
+      if (inputType === 'file' && isAssemblyAiSourceFormat(source.format)) {
         try {
           await triggerSourceTranscription(source.id)
         } catch (invokeError) {
           triggerError = getErrorMessage(invokeError)
         }
+      } else if (inputType === 'file') {
+        triggerWarning =
+          'Text and document sources are saved for cataloging, but automatic document ingestion is not available yet.'
       } else {
         triggerWarning =
           'URL sources are saved for cataloging, but automatic URL ingestion is not available yet.'

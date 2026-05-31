@@ -63,7 +63,7 @@ export interface AdminSourceListRow {
   source: AdminSourceRow
 }
 
-export type PipelineRerunFunction = 'trigger-transcription' | 'trigger-extraction'
+export type PipelineRerunFunction = 'trigger-transcription' | 'trigger-chunking' | 'trigger-extraction'
 
 export interface PipelineRerunAction {
   disabledReason: string | null
@@ -259,15 +259,43 @@ export const triggerSourceTranscription = async (sourceId: string) => {
   }
 }
 
+export const isAssemblyAiSourceFormat = (format: SourceFormat) => {
+  return format === 'audio' || format === 'video'
+}
+
 export const getPipelineRerunAction = (
   stage: PipelineStage,
-  source?: Pick<AdminSourceRow, 'file_path' | 'format' | 'status'>
+  source?: Pick<AdminSourceRow, 'file_path' | 'format' | 'status' | 'transcript_id'>
 ): PipelineRerunAction => {
   if (source?.status === 'archived') {
     return {
       disabledReason: 'Restore this source before re-running the pipeline.',
       functionName: null,
       label: 'Restore required',
+    }
+  }
+
+  if (stage === 'chunking' || stage === 'chunking_failed') {
+    if (!source?.transcript_id) {
+      return {
+        disabledReason: 'Chunking cannot run until a transcript id exists.',
+        functionName: null,
+        label: 'Transcript required',
+      }
+    }
+
+    return {
+      disabledReason: null,
+      functionName: 'trigger-chunking',
+      label: 'Re-run chunking',
+    }
+  }
+
+  if (stage === 'transcribing' && source?.transcript_id) {
+    return {
+      disabledReason: null,
+      functionName: 'trigger-chunking',
+      label: 'Recover chunking',
     }
   }
 
@@ -280,18 +308,18 @@ export const getPipelineRerunAction = (
       }
     }
 
+    if (source && !isAssemblyAiSourceFormat(source.format)) {
+      return {
+        disabledReason: 'Automatic text and document ingestion is not available yet.',
+        functionName: null,
+        label: 'Document ingestion pending',
+      }
+    }
+
     return {
       disabledReason: null,
       functionName: 'trigger-transcription',
       label: 'Re-run transcription',
-    }
-  }
-
-  if (stage === 'chunking' || stage === 'chunking_failed') {
-    return {
-      disabledReason: 'Chunking recovery will be enabled with the chunking pipeline.',
-      functionName: null,
-      label: 'Recovery unavailable',
     }
   }
 
@@ -318,7 +346,7 @@ const sourceHasChunks = async (sourceId: string) => {
 export const rerunSourcePipelineStage = async (
   sourceId: string,
   stage: PipelineStage,
-  source?: Pick<AdminSourceRow, 'file_path' | 'format' | 'status'>
+  source?: Pick<AdminSourceRow, 'file_path' | 'format' | 'status' | 'transcript_id'>
 ) => {
   const action = getPipelineRerunAction(stage, source)
 
@@ -401,6 +429,7 @@ export const getAdminSourceListRows = async (): Promise<AdminSourceListRow[]> =>
       page_count: row.page_count,
       pipeline_stage: row.pipeline_stage,
       pipeline_stage_entered_at: row.pipeline_stage_entered_at,
+      pipeline_error: row.pipeline_error,
       publication_date: row.publication_date,
       status: row.status,
       tier: row.tier,
@@ -577,6 +606,7 @@ const isAdminSourceRow = (value: unknown): value is AdminSourceRow => {
     isNullableNumber(value.duration_seconds) &&
     isNullableNumber(value.page_count) &&
     isPipelineStage(value.pipeline_stage) &&
+    isNullableString(value.pipeline_error) &&
     isContentStatus(value.status) &&
     typeof value.created_at === 'string' &&
     typeof value.updated_at === 'string' &&
