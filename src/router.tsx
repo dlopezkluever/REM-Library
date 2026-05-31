@@ -4,6 +4,9 @@ import { AppShell } from '@/components/layout/AppShell'
 import { ContentShell } from '@/components/layout/ContentShell'
 import { AdminShell } from '@/components/layout/AdminShell'
 import GraphPage from '@/pages/GraphPage'
+import ExplorationsPage from '@/pages/ExplorationsPage'
+import ExplorationPlayerPage from '@/pages/ExplorationPlayerPage'
+import TimelinePage from '@/pages/TimelinePage'
 import EncyclopediaBrowsePage from '@/pages/encyclopedia/EncyclopediaBrowsePage'
 import EntityDetailPage from '@/pages/entity/EntityDetailPage'
 import ClaimDetailPage from '@/pages/claim/ClaimDetailPage'
@@ -19,13 +22,17 @@ import AdminReviewQueuePage from '@/pages/admin/AdminReviewQueuePage'
 import AdminEntityManagerPage from '@/pages/admin/AdminEntityManagerPage'
 import AdminClaimManagerPage from '@/pages/admin/AdminClaimManagerPage'
 import AdminSettingsPage from '@/pages/admin/AdminSettingsPage'
+import AdminExplorationEditor from '@/pages/admin/AdminExplorationEditor'
 import ErrorPage from '@/pages/ErrorPage'
 
 export const router = createBrowserRouter([
   {
     element: <AppShell />,
     errorElement: <ErrorPage />,
-    children: [{ path: '/', element: <GraphPage /> }],
+    children: [
+      { path: '/', element: <GraphPage /> },
+      { path: '/explorations/:id', element: <ExplorationPlayerPage /> },
+    ],
   },
   {
     element: <ContentShell />,
@@ -38,6 +45,8 @@ export const router = createBrowserRouter([
       { path: '/source/:id', element: <SourceDetailPage /> },
       { path: '/sources/:id', element: <SourceDetailPage /> },
       { path: '/search', element: <SearchPage /> },
+      { path: '/explorations', element: <ExplorationsPage /> },
+      { path: '/timeline', element: <TimelinePage /> },
     ],
   },
   {
@@ -60,6 +69,7 @@ export const router = createBrowserRouter([
           { path: '/admin/review', element: <AdminReviewQueuePage /> },
           { path: '/admin/entities', element: <AdminEntityManagerPage /> },
           { path: '/admin/claims', element: <AdminClaimManagerPage /> },
+          { path: '/admin/explorations/new', element: <AdminExplorationEditor /> },
           { path: '/admin/settings', element: <AdminSettingsPage /> },
         ],
       },
