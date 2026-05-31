@@ -18,6 +18,7 @@ export type Database = {
           raw_text: string
           source_id: string
           speaker: string | null
+          speaker_turns: Json
           start_sec: number | null
         }
         Insert: {
@@ -29,6 +30,7 @@ export type Database = {
           raw_text: string
           source_id: string
           speaker?: string | null
+          speaker_turns?: Json
           start_sec?: number | null
         }
         Update: {
@@ -40,6 +42,7 @@ export type Database = {
           raw_text?: string
           source_id?: string
           speaker?: string | null
+          speaker_turns?: Json
           start_sec?: number | null
         }
         Relationships: [
@@ -399,11 +402,14 @@ export type Database = {
           format: Database['public']['Enums']['source_format']
           id: string
           page_count: number | null
+          pipeline_error: string | null
           pipeline_stage: Database['public']['Enums']['pipeline_stage']
+          pipeline_stage_entered_at: string
           publication_date: string | null
           status: Database['public']['Enums']['content_status']
           tier: Database['public']['Enums']['source_tier']
           title: string
+          transcript_id: string | null
           updated_at: string
           url: string | null
         }
@@ -416,11 +422,14 @@ export type Database = {
           format: Database['public']['Enums']['source_format']
           id?: string
           page_count?: number | null
+          pipeline_error?: string | null
           pipeline_stage?: Database['public']['Enums']['pipeline_stage']
+          pipeline_stage_entered_at?: string
           publication_date?: string | null
           status?: Database['public']['Enums']['content_status']
           tier: Database['public']['Enums']['source_tier']
           title: string
+          transcript_id?: string | null
           updated_at?: string
           url?: string | null
         }
@@ -433,11 +442,14 @@ export type Database = {
           format?: Database['public']['Enums']['source_format']
           id?: string
           page_count?: number | null
+          pipeline_error?: string | null
           pipeline_stage?: Database['public']['Enums']['pipeline_stage']
+          pipeline_stage_entered_at?: string
           publication_date?: string | null
           status?: Database['public']['Enums']['content_status']
           tier?: Database['public']['Enums']['source_tier']
           title?: string
+          transcript_id?: string | null
           updated_at?: string
           url?: string | null
         }
@@ -448,6 +460,32 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_admin_content_stats: { Args: never; Returns: Json }
+      get_admin_source_list_rows: {
+        Args: { page_limit?: number; page_offset?: number }
+        Returns: {
+          authors: string[]
+          created_at: string
+          description: string | null
+          duration_seconds: number | null
+          extraction_count: number
+          file_path: string | null
+          format: Database['public']['Enums']['source_format']
+          id: string
+          page_count: number | null
+          pending_review_count: number
+          pipeline_error: string | null
+          pipeline_stage: Database['public']['Enums']['pipeline_stage']
+          pipeline_stage_entered_at: string
+          publication_date: string | null
+          status: Database['public']['Enums']['content_status']
+          tier: Database['public']['Enums']['source_tier']
+          title: string
+          transcript_id: string | null
+          updated_at: string
+          url: string | null
+        }[]
+      }
       has_internal_access: { Args: never; Returns: boolean }
       is_admin: { Args: never; Returns: boolean }
       refresh_search_indexes: {
@@ -483,8 +521,11 @@ export type Database = {
       pipeline_stage:
         | 'uploaded'
         | 'transcribing'
+        | 'transcribing_failed'
         | 'chunking'
+        | 'chunking_failed'
         | 'extracting'
+        | 'extracting_failed'
         | 'review'
         | 'curated'
         | 'published'
@@ -629,8 +670,11 @@ export const Constants = {
       pipeline_stage: [
         'uploaded',
         'transcribing',
+        'transcribing_failed',
         'chunking',
+        'chunking_failed',
         'extracting',
+        'extracting_failed',
         'review',
         'curated',
         'published',

@@ -10,7 +10,9 @@ export const ROUTES = {
   ADMIN_DASHBOARD: '/admin/dashboard',
   ADMIN_SOURCES: '/admin/sources',
   ADMIN_SOURCE_NEW: '/admin/sources/new',
+  ADMIN_SOURCE_DETAIL: '/admin/sources/:id',
   ADMIN_REVIEW: '/admin/review',
   ADMIN_ENTITIES: '/admin/entities',
+  ADMIN_CLAIMS: '/admin/claims',
   ADMIN_SETTINGS: '/admin/settings',
 } as const

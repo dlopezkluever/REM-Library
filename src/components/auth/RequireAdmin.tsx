@@ -1,4 +1,5 @@
-import { Navigate, Outlet, useLocation } from 'react-router-dom'
+import { Link, Navigate, Outlet, useLocation } from 'react-router-dom'
+import { ROUTES } from '@/constants/routes'
 import { useAuthStore } from '@/stores/authStore'
 
 export const RequireAdmin = () => {
@@ -6,11 +7,28 @@ export const RequireAdmin = () => {
   const session = useAuthStore((state) => state.session)
   const role = useAuthStore((state) => state.role)
   const isLoading = useAuthStore((state) => state.isLoading)
+  const error = useAuthStore((state) => state.error)
 
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-stone text-ink">
         <p className="font-display text-sm uppercase tracking-label text-[#888]">Loading</p>
+      </div>
+    )
+  }
+
+  if (error && !session) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-stone px-4 text-ink">
+        <div className="max-w-sm text-center">
+          <p className="font-body text-sm text-terracotta-dark">{error}</p>
+          <Link
+            className="mt-4 inline-flex font-display text-[10px] uppercase tracking-label text-ink underline"
+            to={ROUTES.ADMIN_LOGIN}
+          >
+            Return to admin login
+          </Link>
+        </div>
       </div>
     )
   }
@@ -22,7 +40,9 @@ export const RequireAdmin = () => {
   if (!role) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-stone text-ink">
-        <p className="font-body text-sm text-[#888]">No admin profile is linked to this account.</p>
+        <p className="font-body text-sm text-[#888]">
+          {error ?? 'No admin profile is linked to this account.'}
+        </p>
       </div>
     )
   }

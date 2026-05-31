@@ -3,6 +3,11 @@ import { formatTimestamp } from '@/lib/format'
 import type { EntityRow } from '@/lib/api/entities'
 import type { SourceChunkRow } from '@/lib/api/sources'
 
+interface SpeakerTurn {
+  speaker: string | null
+  text: string
+}
+
 interface TranscriptViewerProps {
   chunks: SourceChunkRow[]
   entities: EntityRow[]
@@ -27,6 +32,28 @@ const buildEntityPattern = (entities: EntityRow[]) => {
   }
 }
 
+const getSpeakerTurns = (chunk: SourceChunkRow): SpeakerTurn[] => {
+  if (!Array.isArray(chunk.speaker_turns)) {
+    return [{ speaker: chunk.speaker, text: chunk.raw_text }]
+  }
+
+  const turns = chunk.speaker_turns
+    .map((turn): SpeakerTurn | null => {
+      if (typeof turn !== 'object' || turn === null || !('text' in turn)) {
+        return null
+      }
+
+      const record = turn as Record<string, unknown>
+      return {
+        speaker: typeof record.speaker === 'string' ? record.speaker : null,
+        text: typeof record.text === 'string' ? record.text : '',
+      }
+    })
+    .filter((turn): turn is SpeakerTurn => Boolean(turn?.text.trim()))
+
+  return turns.length > 0 ? turns : [{ speaker: chunk.speaker, text: chunk.raw_text }]
+}
+
 export const TranscriptViewer = ({ chunks, entities, onSeek }: TranscriptViewerProps) => {
   const navigate = useNavigate()
   const entityPattern = buildEntityPattern(entities)
@@ -43,10 +70,10 @@ export const TranscriptViewer = ({ chunks, entities, onSeek }: TranscriptViewerP
     <div className="rounded-lg border-0.5 border-black/10 bg-white">
       {chunks.map((chunk) => {
         const timestamp = formatTimestamp(chunk.start_sec)
-        const parts = entityPattern ? chunk.raw_text.split(entityPattern.regex) : [chunk.raw_text]
+        const speakerTurns = getSpeakerTurns(chunk)
 
         return (
-          <p
+          <div
             id={chunk.start_sec !== null ? `t-${chunk.start_sec}` : undefined}
             key={chunk.id}
             className="border-b-0.5 border-black/[0.06] px-4 py-3 font-body text-[13px] leading-reading text-ink last:border-b-0"
@@ -60,27 +87,40 @@ export const TranscriptViewer = ({ chunks, entities, onSeek }: TranscriptViewerP
                 [{timestamp}]
               </button>
             ) : null}
-            {parts.map((part, index) => {
-              const match = entityPattern?.entries.find(
-                (entry) => entry.name.toLowerCase() === part.toLowerCase()
-              )
-
-              if (!match) {
-                return <span key={`${chunk.id}-${index}`}>{part}</span>
-              }
+            {speakerTurns.map((turn, turnIndex) => {
+              const parts = entityPattern ? turn.text.split(entityPattern.regex) : [turn.text]
 
               return (
-                <button
-                  key={`${chunk.id}-${index}`}
-                  type="button"
-                  className="rounded-sm bg-verdigris-light px-1 text-verdigris-dark hover:bg-verdigris/20"
-                  onClick={() => navigate(`/entity/${match.entity.slug}`)}
-                >
-                  {part}
-                </button>
+                <p key={`${chunk.id}-${turnIndex}`} className={turnIndex > 0 ? 'mt-2' : undefined}>
+                  {turn.speaker ? (
+                    <span className="mr-2 font-display text-[9px] uppercase tracking-badge text-[#777]">
+                      {turn.speaker}
+                    </span>
+                  ) : null}
+                  {parts.map((part, index) => {
+                    const match = entityPattern?.entries.find(
+                      (entry) => entry.name.toLowerCase() === part.toLowerCase()
+                    )
+
+                    if (!match) {
+                      return <span key={`${chunk.id}-${turnIndex}-${index}`}>{part}</span>
+                    }
+
+                    return (
+                      <button
+                        key={`${chunk.id}-${turnIndex}-${index}`}
+                        type="button"
+                        className="rounded-sm bg-verdigris-light px-1 text-verdigris-dark hover:bg-verdigris/20"
+                        onClick={() => navigate(`/entity/${match.entity.slug}`)}
+                      >
+                        {part}
+                      </button>
+                    )
+                  })}
+                </p>
               )
             })}
-          </p>
+          </div>
         )
       })}
     </div>

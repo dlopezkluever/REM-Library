@@ -108,4 +108,12 @@ Set `VITE_SUPABASE_INTEGRATION_TESTS=true` when running Vitest against the local
 | `VITE_SUPABASE_INTEGRATION_TESTS` | Enables local Supabase integration tests when set to `true` |
 | `SUPABASE_SERVICE_ROLE_KEY` | Service role key (server-side / pipeline use only) |
 | `ASSEMBLYAI_API_KEY`        | AssemblyAI transcription API key                   |
+| `ASSEMBLYAI_WEBHOOK_URL`    | Public URL for the AssemblyAI completion webhook   |
+| `ASSEMBLYAI_WEBHOOK_SECRET` | Required shared secret sent by AssemblyAI to the public webhook |
+| `ALLOW_UNSIGNED_ASSEMBLYAI_WEBHOOKS` | Local-only escape hatch for unsigned AssemblyAI webhook testing |
+| `ASSEMBLYAI_SPEECH_MODELS`  | Optional comma-separated AssemblyAI model fallback list |
 | `ANTHROPIC_API_KEY`         | Claude API key for the extraction pipeline         |
+| `ANTHROPIC_MODEL`           | Optional Claude model override for extraction      |
+| `ANTHROPIC_MAX_TOKENS`      | Optional output token budget for each extraction request |
+
+The deployed `assemblyai-webhook` Edge Function has JWT verification disabled so AssemblyAI can call it directly. Keep `ASSEMBLYAI_WEBHOOK_SECRET` set in deployed environments; without it the webhook fails closed. Use `ALLOW_UNSIGNED_ASSEMBLYAI_WEBHOOKS=true` only for isolated local webhook tests.
