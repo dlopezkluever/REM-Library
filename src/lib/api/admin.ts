@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase/client'
-import type { Enums, Json, Tables, TablesInsert, TablesUpdate } from '@/types/database'
+import type { Enums, Json, Tables, TablesInsert } from '@/types/database'
 
 export type AdminSourceRow = Tables<'sources'>
 export type EntityType = Enums<'entity_type'>
@@ -10,6 +10,7 @@ export type PipelineStage = Enums<'pipeline_stage'>
 export type ExtractionStatus = Enums<'extraction_status'>
 export type RelationshipType = Enums<'relationship_type'>
 export type AdminEntityRow = Tables<'entities'>
+export type AdminClaimRow = Tables<'claims'>
 export type AdminExtractionRow = Tables<'extractions'>
 export type AdminChunkRow = Tables<'chunks'>
 
@@ -95,12 +96,21 @@ export interface PendingExtraction {
   items: ReviewItem[]
   validationError: string | null
   validationFailed: boolean
+  validationRawResponse: string | null
 }
 
 export interface ReviewSourceGroup {
   extractions: PendingExtraction[]
   pendingItemCount: number
   source: AdminSourceRow
+}
+
+export interface ReviewSourceSummary {
+  oldestExtractionAt: string
+  pendingExtractionCount: number
+  pendingItemCount: number
+  source: Pick<AdminSourceRow, 'format' | 'id' | 'status' | 'tier' | 'title'>
+  validationFailedCount: number
 }
 
 export interface SaveEntityReviewInput {
@@ -174,6 +184,25 @@ export interface ReviewActionResult {
   rowStatus: ExtractionStatus
 }
 
+export interface AdminEntityPage {
+  entities: AdminEntityRow[]
+  page: number
+  pageSize: number
+  totalCount: number
+}
+
+export interface AdminClaimListRow extends AdminClaimRow {
+  entityNames: string[]
+  evidenceCount: number
+}
+
+export interface AdminClaimPage {
+  claims: AdminClaimListRow[]
+  page: number
+  pageSize: number
+  totalCount: number
+}
+
 const entityTypes: EntityType[] = ['symbol', 'figure', 'narrative', 'culture', 'trope']
 const contentStatuses: ContentStatus[] = ['draft', 'published', 'archived', 'disputed']
 const relationshipTypes: RelationshipType[] = [
@@ -193,6 +222,9 @@ const confidenceBuckets = [
 ]
 const adminSourceMonitorLimit = 100
 const adminSourceListLimit = 100
+const adminEntityPageSize = 50
+const adminClaimPageSize = 50
+const reviewQueuePageSize = 50
 const sourceFileBucket = 'source-files'
 
 const requireCount = (count: number | null) => count ?? 0
@@ -258,36 +290,6 @@ export const slugifyEntityName = (name: string) => {
   return slug || 'entity'
 }
 
-const getUniqueEntitySlug = async (name: string, existingEntityId?: string | null) => {
-  const baseSlug = slugifyEntityName(name)
-
-  for (let index = 0; index < 100; index += 1) {
-    const slug = index === 0 ? baseSlug : `${baseSlug}-${index + 1}`
-    let query = supabase.from('entities').select('id').eq('slug', slug).limit(1)
-
-    if (existingEntityId) {
-      query = query.neq('id', existingEntityId)
-    }
-
-    const { data, error } = await query
-
-    if (error) {
-      throw error
-    }
-
-    if (!data || data.length === 0) {
-      return slug
-    }
-  }
-
-  return `${baseSlug}-${Date.now()}`
-}
-
-const getCurrentUserId = async () => {
-  const { data } = await supabase.auth.getUser()
-  return data.user?.id ?? null
-}
-
 const isRecord = (value: unknown): value is Record<string, unknown> => {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -350,318 +352,6 @@ const parseReviewItems = (extractionData: Json): ReviewItem[] => {
 
 export const getPendingReviewItems = (extractionData: Json) => {
   return parseReviewItems(extractionData).filter((item) => item.reviewStatus === 'pending')
-}
-
-const getTerminalExtractionStatus = (extractionData: Json): ExtractionStatus => {
-  const items = parseReviewItems(extractionData)
-  const statuses = items.map((item) => item.reviewStatus)
-
-  if (statuses.length === 0 || statuses.some((status) => status === 'pending')) {
-    return 'pending'
-  }
-
-  if (statuses.some((status) => status === 'edited')) {
-    return 'edited'
-  }
-
-  if (statuses.some((status) => status === 'merged')) {
-    return 'merged'
-  }
-
-  if (statuses.some((status) => status === 'confirmed' || status === 'split')) {
-    return 'confirmed'
-  }
-
-  return 'rejected'
-}
-
-const updateExtractionItemReview = (
-  extractionData: Json,
-  itemKind: ReviewItem['kind'],
-  itemId: string,
-  status: 'confirmed' | 'edited' | 'rejected' | 'merged' | 'split',
-  resultIds: string[],
-  reviewedBy: string | null,
-  extraValues: Record<string, Json> = {}
-): Json => {
-  if (!isRecord(extractionData)) {
-    return extractionData
-  }
-
-  const key = itemKind === 'entity' ? 'entities' : 'claims'
-  const items = Array.isArray(extractionData[key]) ? extractionData[key] : []
-  let matched = false
-
-  const nextItems = items.map((item, index) => {
-    if (!isRecord(item)) {
-      return item
-    }
-
-    const currentItemId = getItemId(item, `${itemKind}-${index}`)
-
-    if (currentItemId !== itemId) {
-      return item
-    }
-
-    matched = true
-
-    return {
-      ...item,
-      ...extraValues,
-      item_id: currentItemId,
-      review_result_ids: resultIds,
-      review_status: status,
-      reviewed_at: new Date().toISOString(),
-      reviewed_by: reviewedBy,
-    }
-  })
-
-  if (!matched) {
-    throw new Error('The selected extraction item could not be found.')
-  }
-
-  return {
-    ...extractionData,
-    [key]: nextItems,
-  }
-}
-
-const getExtractionWithChunk = async (extractionId: string) => {
-  const { data: extraction, error: extractionError } = await supabase
-    .from('extractions')
-    .select('*')
-    .eq('id', extractionId)
-    .single()
-
-  if (extractionError) {
-    throw extractionError
-  }
-
-  const { data: chunk, error: chunkError } = await supabase
-    .from('chunks')
-    .select('*')
-    .eq('id', extraction.chunk_id)
-    .single()
-
-  if (chunkError) {
-    throw chunkError
-  }
-
-  return { chunk, extraction }
-}
-
-const getReviewItem = (
-  extractionData: Json,
-  itemKind: ReviewItem['kind'],
-  itemId: string
-): ReviewItem => {
-  const item = parseReviewItems(extractionData).find(
-    (candidate) => candidate.kind === itemKind && candidate.itemId === itemId
-  )
-
-  if (!item) {
-    throw new Error('The selected extraction item could not be found.')
-  }
-
-  return item
-}
-
-const createSourceAnchorForChunk = async (chunk: AdminChunkRow, transcriptExcerpt?: string) => {
-  const { data, error } = await supabase
-    .from('source_anchors')
-    .insert({
-      end_timestamp_sec: chunk.end_sec,
-      source_id: chunk.source_id,
-      speaker: chunk.speaker,
-      start_timestamp_sec: chunk.start_sec,
-      transcript_excerpt: transcriptExcerpt?.trim() || chunk.raw_text.slice(0, 1000),
-    })
-    .select('*')
-    .single()
-
-  if (error) {
-    throw error
-  }
-
-  return data
-}
-
-const createOrUpdateDraftEntity = async (input: SaveEntityReviewInput) => {
-  const name = normalizeName(input.name)
-  const aliases = uniqueStrings(
-    input.aliases.filter((alias) => alias.toLowerCase() !== name.toLowerCase())
-  )
-  const existing = await findEntityByName(name)
-
-  if (existing?.status === 'draft') {
-    const slug = await getUniqueEntitySlug(name, existing.id)
-    const { data, error } = await supabase
-      .from('entities')
-      .update({
-        aliases: uniqueStrings([...existing.aliases, ...aliases]),
-        description: input.description,
-        name,
-        slug,
-        type: input.type,
-      })
-      .eq('id', existing.id)
-      .select('*')
-      .single()
-
-    if (error) {
-      throw error
-    }
-
-    return data
-  }
-
-  const { data, error } = await supabase
-    .from('entities')
-    .insert({
-      aliases,
-      description: input.description,
-      name,
-      slug: await getUniqueEntitySlug(name),
-      status: 'draft',
-      type: input.type,
-    })
-    .select('*')
-    .single()
-
-  if (error) {
-    throw error
-  }
-
-  return data
-}
-
-const findEntityByName = async (name: string) => {
-  const normalizedName = normalizeName(name)
-  const { data, error } = await supabase
-    .from('entities')
-    .select('*')
-    .ilike('name', normalizedName)
-    .neq('status', 'archived')
-    .limit(1)
-
-  if (error) {
-    throw error
-  }
-
-  return data[0] ?? null
-}
-
-const getEntitiesByNames = async (names: string[]) => {
-  const uniqueNames = uniqueStrings(names)
-  const entities: AdminEntityRow[] = []
-
-  for (const name of uniqueNames) {
-    const entity = await findEntityByName(name)
-
-    if (entity) {
-      entities.push(entity)
-    }
-  }
-
-  return entities
-}
-
-const createDraftClaim = async (input: SaveClaimReviewInput, chunk: AdminChunkRow) => {
-  const { data: claim, error: claimError } = await supabase
-    .from('claims')
-    .insert({
-      detailed_argument: input.evidenceSummary,
-      statement: input.statement.trim(),
-      status: 'draft',
-    })
-    .select('*')
-    .single()
-
-  if (claimError) {
-    throw claimError
-  }
-
-  const anchor = await createSourceAnchorForChunk(chunk, input.evidenceSummary || input.statement)
-
-  const { error: evidenceError } = await supabase.from('claim_evidence').insert({
-    anchor_id: anchor.id,
-    claim_id: claim.id,
-  })
-
-  if (evidenceError) {
-    throw evidenceError
-  }
-
-  const involvedEntities = await getEntitiesByNames(input.entitiesInvolved)
-
-  if (involvedEntities.length > 0) {
-    const { error: claimEntitiesError } = await supabase.from('claim_entities').upsert(
-      involvedEntities.map((entity) => ({
-        claim_id: claim.id,
-        entity_id: entity.id,
-      }))
-    )
-
-    if (claimEntitiesError) {
-      throw claimEntitiesError
-    }
-  }
-
-  if (involvedEntities.length >= 2) {
-    await createOrUpdateRelationship(
-      involvedEntities[0].id,
-      involvedEntities[1].id,
-      input.relationshipType,
-      claim.id
-    )
-  }
-
-  return { anchor, claim, involvedEntities }
-}
-
-const createOrUpdateRelationship = async (
-  fromEntityId: string,
-  toEntityId: string,
-  relationshipType: RelationshipType,
-  claimId: string
-) => {
-  const { data: existingRows, error: existingError } = await supabase
-    .from('relationships')
-    .select('*')
-    .eq('from_entity_id', fromEntityId)
-    .eq('to_entity_id', toEntityId)
-    .eq('type', relationshipType)
-    .limit(1)
-
-  if (existingError) {
-    throw existingError
-  }
-
-  const existing = existingRows[0]
-
-  if (existing) {
-    const { error } = await supabase
-      .from('relationships')
-      .update({ claim_ids: uniqueStrings([...existing.claim_ids, claimId]) })
-      .eq('id', existing.id)
-
-    if (error) {
-      throw error
-    }
-
-    return
-  }
-
-  const { error } = await supabase.from('relationships').insert({
-    claim_ids: [claimId],
-    from_entity_id: fromEntityId,
-    to_entity_id: toEntityId,
-    type: relationshipType,
-  })
-
-  if (error) {
-    throw error
-  }
 }
 
 export const getAdminDashboardCounts = async (): Promise<AdminDashboardCounts> => {
@@ -934,33 +624,13 @@ export const rerunSourcePipelineStage = async (
 }
 
 export const archiveAdminSource = async (sourceId: string) => {
-  const { data, error } = await supabase
-    .from('sources')
-    .update({ status: 'archived' })
-    .eq('id', sourceId)
-    .select('*')
-    .single()
-
-  if (error) {
-    throw error
-  }
-
-  return data
+  await updateAdminSourceStatus(sourceId, 'archived')
+  return getAdminSourceById(sourceId)
 }
 
 export const restoreAdminSource = async (sourceId: string) => {
-  const { data, error } = await supabase
-    .from('sources')
-    .update({ status: 'draft' })
-    .eq('id', sourceId)
-    .select('*')
-    .single()
-
-  if (error) {
-    throw error
-  }
-
-  return data
+  await updateAdminSourceStatus(sourceId, 'draft')
+  return getAdminSourceById(sourceId)
 }
 
 export const getAdminSourceById = async (sourceId: string) => {
@@ -1020,107 +690,179 @@ export const getAdminSourceListRows = async (): Promise<AdminSourceListRow[]> =>
   })
 }
 
-export const getPendingExtractionReviewSources = async (): Promise<ReviewSourceGroup[]> => {
-  const { data: extractions, error: extractionsError } = await supabase
-    .from('extractions')
-    .select('*')
-    .eq('status', 'pending')
-    .order('created_at', { ascending: true })
-
-  if (extractionsError) {
-    throw extractionsError
-  }
-
-  if (extractions.length === 0) {
-    return []
-  }
-
-  const chunkIds = uniqueStrings(extractions.map((extraction) => extraction.chunk_id))
-  const { data: chunks, error: chunksError } = await supabase
-    .from('chunks')
-    .select('*')
-    .in('id', chunkIds)
-
-  if (chunksError) {
-    throw chunksError
-  }
-
-  const sourceIds = uniqueStrings(chunks.map((chunk) => chunk.source_id))
-  const { data: sources, error: sourcesError } = await supabase
-    .from('sources')
-    .select('*')
-    .in('id', sourceIds)
-    .neq('status', 'archived')
-
-  if (sourcesError) {
-    throw sourcesError
-  }
-
-  const chunksById = new Map(chunks.map((chunk) => [chunk.id, chunk]))
-  const sourcesById = new Map(sources.map((source) => [source.id, source]))
-  const groups = new Map<string, ReviewSourceGroup>()
-
-  extractions.forEach((extraction) => {
-    const chunk = chunksById.get(extraction.chunk_id)
-    const source = chunk ? sourcesById.get(chunk.source_id) : null
-
-    if (!chunk || !source) {
-      return
-    }
-
-    const pendingItems = getPendingReviewItems(extraction.extraction_data)
-    const validationFailed =
-      isRecord(extraction.extraction_data) && extraction.extraction_data.validation_failed === true
-    const validationError =
-      isRecord(extraction.extraction_data) &&
-      typeof extraction.extraction_data.validation_error === 'string'
-        ? extraction.extraction_data.validation_error
-        : null
-
-    if (pendingItems.length === 0 && !validationFailed) {
-      return
-    }
-
-    const pendingExtraction: PendingExtraction = {
-      chunk,
-      extraction,
-      items: pendingItems,
-      validationError,
-      validationFailed,
-    }
-    const currentGroup = groups.get(source.id)
-
-    if (currentGroup) {
-      currentGroup.extractions.push(pendingExtraction)
-      currentGroup.pendingItemCount += pendingItems.length
-      return
-    }
-
-    groups.set(source.id, {
-      extractions: [pendingExtraction],
-      pendingItemCount: pendingItems.length,
-      source,
-    })
-  })
-
-  return Array.from(groups.values()).sort((first, second) =>
-    first.source.title.localeCompare(second.source.title)
-  )
+const getValidationError = (extractionData: Json) => {
+  return isRecord(extractionData) && typeof extractionData.validation_error === 'string'
+    ? extractionData.validation_error
+    : null
 }
 
-export const getAdminEntities = async () => {
-  const { data, error } = await supabase
-    .from('entities')
-    .select('*')
-    .neq('status', 'archived')
-    .order('updated_at', { ascending: false })
-    .order('name', { ascending: true })
+const getValidationRawResponse = (extractionData: Json) => {
+  return isRecord(extractionData) && typeof extractionData.raw_response === 'string'
+    ? extractionData.raw_response
+    : null
+}
+
+const getValidationFailed = (extractionData: Json) => {
+  return isRecord(extractionData) && extractionData.validation_failed === true
+}
+
+export const getPendingReviewSourceSummaries = async (page = 0): Promise<ReviewSourceSummary[]> => {
+  const { data, error } = await supabase.rpc('get_pending_review_source_summaries', {
+    page_limit: reviewQueuePageSize,
+    page_offset: page * reviewQueuePageSize,
+  })
 
   if (error) {
     throw error
   }
 
-  return data
+  return data.map((row) => ({
+    oldestExtractionAt: row.oldest_extraction_at,
+    pendingExtractionCount: row.pending_extraction_count,
+    pendingItemCount: row.pending_item_count,
+    source: {
+      format: row.source_format,
+      id: row.source_id,
+      status: row.source_status,
+      tier: row.source_tier,
+      title: row.source_title,
+    },
+    validationFailedCount: row.validation_failed_count,
+  }))
+}
+
+export const getPendingExtractionReviewSource = async (
+  sourceId: string
+): Promise<ReviewSourceGroup | null> => {
+  const { data: source, error: sourceError } = await supabase
+    .from('sources')
+    .select('*')
+    .eq('id', sourceId)
+    .neq('status', 'archived')
+    .single()
+
+  if (sourceError) {
+    throw sourceError
+  }
+
+  const { data: chunks, error: chunksError } = await supabase
+    .from('chunks')
+    .select('*')
+    .eq('source_id', sourceId)
+    .order('chunk_index', { ascending: true })
+
+  if (chunksError) {
+    throw chunksError
+  }
+
+  if (chunks.length === 0) {
+    return { extractions: [], pendingItemCount: 0, source }
+  }
+
+  const chunkIds = chunks.map((chunk) => chunk.id)
+  const { data: extractions, error: extractionsError } = await supabase
+    .from('extractions')
+    .select('*')
+    .eq('status', 'pending')
+    .in('chunk_id', chunkIds)
+    .order('created_at', { ascending: true })
+    .limit(200)
+
+  if (extractionsError) {
+    throw extractionsError
+  }
+
+  const chunksById = new Map(chunks.map((chunk) => [chunk.id, chunk]))
+  const pendingExtractions = extractions.flatMap((extraction): PendingExtraction[] => {
+    const chunk = chunksById.get(extraction.chunk_id)
+
+    if (!chunk) {
+      return []
+    }
+
+    const items = getPendingReviewItems(extraction.extraction_data)
+    const validationFailed = getValidationFailed(extraction.extraction_data)
+
+    if (items.length === 0 && !validationFailed) {
+      return []
+    }
+
+    return [
+      {
+        chunk,
+        extraction,
+        items,
+        validationError: getValidationError(extraction.extraction_data),
+        validationFailed,
+        validationRawResponse: getValidationRawResponse(extraction.extraction_data),
+      },
+    ]
+  })
+
+  return {
+    extractions: pendingExtractions,
+    pendingItemCount: pendingExtractions.reduce(
+      (total, extraction) => total + extraction.items.length,
+      0
+    ),
+    source,
+  }
+}
+
+export const getPendingExtractionReviewSources = async (): Promise<ReviewSourceGroup[]> => {
+  const summaries = await getPendingReviewSourceSummaries()
+  const groups = await Promise.all(
+    summaries.map((summary) => getPendingExtractionReviewSource(summary.source.id))
+  )
+
+  return groups.filter((group): group is ReviewSourceGroup => Boolean(group))
+}
+
+export const getAdminEntitiesPage = async ({
+  page = 0,
+  search = '',
+  status = null,
+}: {
+  page?: number
+  search?: string
+  status?: ContentStatus | null
+} = {}): Promise<AdminEntityPage> => {
+  const { data, error } = await supabase.rpc('get_admin_entities_page', {
+    page_limit: adminEntityPageSize,
+    page_offset: page * adminEntityPageSize,
+    search_query: search.trim() || null,
+    status_filter: status,
+  })
+
+  if (error) {
+    throw error
+  }
+
+  return {
+    entities: data.map((row) => ({
+      aliases: row.aliases,
+      confidence_override: row.confidence_override,
+      confidence_score: row.confidence_score,
+      created_at: row.created_at,
+      description: row.description,
+      fts: null,
+      id: row.id,
+      name: row.name,
+      position_x: row.position_x,
+      position_y: row.position_y,
+      slug: row.slug,
+      status: row.status,
+      type: row.type,
+      updated_at: row.updated_at,
+    })),
+    page,
+    pageSize: adminEntityPageSize,
+    totalCount: data[0]?.total_count ?? 0,
+  }
+}
+
+export const getAdminEntities = async () => {
+  return (await getAdminEntitiesPage()).entities
 }
 
 export const searchAdminEntities = async (search: string) => {
@@ -1130,25 +872,14 @@ export const searchAdminEntities = async (search: string) => {
     return []
   }
 
-  const { data, error } = await supabase
-    .from('entities')
-    .select('*')
-    .neq('status', 'archived')
-    .ilike('name', `%${query}%`)
-    .order('name', { ascending: true })
-    .limit(10)
-
-  if (error) {
-    throw error
-  }
-
-  return data
+  return (await getAdminEntitiesPage({ search: query })).entities.slice(0, 10)
 }
 
 export const updateAdminEntityStatus = async (entityId: string, status: ContentStatus) => {
+  const updateValues = status === 'published' ? { status } : { confidence_score: 0, status }
   const { data, error } = await supabase
     .from('entities')
-    .update({ status })
+    .update(updateValues)
     .eq('id', entityId)
     .select('*')
     .single()
@@ -1186,6 +917,108 @@ export const publishAdminEntities = async (entityIds: string[]) => {
   return data
 }
 
+export const getAdminClaimsPage = async ({
+  page = 0,
+  search = '',
+  status = null,
+}: {
+  page?: number
+  search?: string
+  status?: ContentStatus | null
+} = {}): Promise<AdminClaimPage> => {
+  const { data, error } = await supabase.rpc('get_admin_claims_page', {
+    page_limit: adminClaimPageSize,
+    page_offset: page * adminClaimPageSize,
+    search_query: search.trim() || null,
+    status_filter: status,
+  })
+
+  if (error) {
+    throw error
+  }
+
+  return {
+    claims: data.map((row) => ({
+      author_id: row.author_id,
+      confidence_override: row.confidence_override,
+      confidence_score: row.confidence_score,
+      created_at: row.created_at,
+      detailed_argument: row.detailed_argument,
+      entityNames: row.entity_names,
+      evidenceCount: row.evidence_count,
+      id: row.id,
+      statement: row.statement,
+      status: row.status,
+      updated_at: row.updated_at,
+    })),
+    page,
+    pageSize: adminClaimPageSize,
+    totalCount: data[0]?.total_count ?? 0,
+  }
+}
+
+export const updateAdminClaimStatus = async (claimId: string, status: ContentStatus) => {
+  const { data: affectedEntityIds, error } = await supabase.rpc('update_claim_status', {
+    claim_id: claimId,
+    next_status: status,
+  })
+
+  if (error) {
+    throw error
+  }
+
+  await triggerConfidenceComputation(affectedEntityIds)
+}
+
+export const publishAdminClaims = async (claimIds: string[]) => {
+  const uniqueClaimIds = uniqueStrings(claimIds)
+
+  if (uniqueClaimIds.length === 0) {
+    return
+  }
+
+  const { data: affectedEntityIds, error } = await supabase.rpc('publish_claims', {
+    claim_ids: uniqueClaimIds,
+  })
+
+  if (error) {
+    throw error
+  }
+
+  await triggerConfidenceComputation(affectedEntityIds)
+}
+
+export const updateAdminSourceStatus = async (sourceId: string, status: ContentStatus) => {
+  const { data: affectedEntityIds, error } = await supabase.rpc('update_source_status', {
+    next_status: status,
+    source_id: sourceId,
+  })
+
+  if (error) {
+    throw error
+  }
+
+  await triggerConfidenceComputation(affectedEntityIds)
+}
+
+export const publishAdminSources = async (sourceIds: string[]) => {
+  const uniqueSourceIds = uniqueStrings(sourceIds)
+
+  if (uniqueSourceIds.length === 0) {
+    return
+  }
+
+  const { data: affectedEntityIds, error } = await supabase.rpc('publish_sources', {
+    source_ids: uniqueSourceIds,
+  })
+
+  if (error) {
+    throw error
+  }
+
+  await triggerConfidenceComputation(affectedEntityIds)
+}
+
 export const triggerConfidenceComputation = async (entityIds: string[]) => {
   const uniqueEntityIds = uniqueStrings(entityIds)
 
@@ -1202,166 +1035,53 @@ export const triggerConfidenceComputation = async (entityIds: string[]) => {
   }
 }
 
+const isReviewActionResult = (value: unknown): value is ReviewActionResult => {
+  if (!isObjectRecord(value)) {
+    return false
+  }
+
+  return Array.isArray(value.createdIds) && typeof value.rowStatus === 'string'
+}
+
 export const reviewExtractionItem = async (
   input: ReviewActionInput
 ): Promise<ReviewActionResult> => {
-  const { chunk, extraction } = await getExtractionWithChunk(input.extractionId)
-  const reviewedBy = await getCurrentUserId()
-  const item = getReviewItem(extraction.extraction_data, input.itemKind, input.itemId)
-  const createdIds: string[] = []
-  let nextExtractionData: Json
+  const { data, error } = await supabase.rpc('review_extraction_item', {
+    action: input.action,
+    claim_input: input.action === 'edit' ? ((input.claim ?? null) as Json | null) : null,
+    entity_input: input.action === 'edit' ? ((input.entity ?? null) as Json | null) : null,
+    extraction_id: input.extractionId,
+    item_id: input.itemId,
+    item_kind: input.itemKind,
+    split_input: input.action === 'split' ? (input.split as unknown as Json) : null,
+    target_entity_id: input.action === 'merge' ? input.targetEntityId : null,
+  })
 
-  if (input.action === 'reject') {
-    nextExtractionData = updateExtractionItemReview(
-      extraction.extraction_data,
-      input.itemKind,
-      input.itemId,
-      'rejected',
-      [],
-      reviewedBy
-    )
-  } else if (input.action === 'merge') {
-    if (item.kind !== 'entity') {
-      throw new Error('Only entity extractions can be merged.')
-    }
-
-    const { data: targetEntity, error: targetError } = await supabase
-      .from('entities')
-      .select('*')
-      .eq('id', input.targetEntityId)
-      .single()
-
-    if (targetError) {
-      throw targetError
-    }
-
-    const mergedAliases = uniqueStrings([
-      ...targetEntity.aliases,
-      item.name,
-      ...item.aliases,
-    ]).filter((alias) => alias.toLowerCase() !== targetEntity.name.toLowerCase())
-
-    const { error: updateError } = await supabase
-      .from('entities')
-      .update({ aliases: mergedAliases })
-      .eq('id', targetEntity.id)
-
-    if (updateError) {
-      throw updateError
-    }
-
-    const anchor = await createSourceAnchorForChunk(chunk, item.description ?? item.name)
-    createdIds.push(targetEntity.id, anchor.id)
-    nextExtractionData = updateExtractionItemReview(
-      extraction.extraction_data,
-      'entity',
-      input.itemId,
-      'merged',
-      createdIds,
-      reviewedBy,
-      {
-        merged_entity_id: targetEntity.id,
-        source_anchor_id: anchor.id,
-      }
-    )
-  } else if (input.action === 'split') {
-    if (item.kind !== 'entity') {
-      throw new Error('Only entity extractions can be split.')
-    }
-
-    const firstEntity = await createOrUpdateDraftEntity(input.split.first)
-    const secondEntity = await createOrUpdateDraftEntity(input.split.second)
-    const anchor = await createSourceAnchorForChunk(chunk, item.description ?? item.name)
-    createdIds.push(firstEntity.id, secondEntity.id, anchor.id)
-    nextExtractionData = updateExtractionItemReview(
-      extraction.extraction_data,
-      'entity',
-      input.itemId,
-      'split',
-      createdIds,
-      reviewedBy,
-      {
-        split_entity_ids: [firstEntity.id, secondEntity.id],
-        source_anchor_id: anchor.id,
-      }
-    )
-  } else if (item.kind === 'entity') {
-    const entityInput =
-      input.action === 'edit' && input.entity
-        ? input.entity
-        : {
-            aliases: item.aliases,
-            description: item.description,
-            name: item.name,
-            type: item.type,
-          }
-
-    const entity = await createOrUpdateDraftEntity(entityInput)
-    const anchor = await createSourceAnchorForChunk(
-      chunk,
-      entityInput.description ?? entityInput.name
-    )
-    createdIds.push(entity.id, anchor.id)
-    nextExtractionData = updateExtractionItemReview(
-      extraction.extraction_data,
-      'entity',
-      input.itemId,
-      input.action === 'edit' ? 'edited' : 'confirmed',
-      createdIds,
-      reviewedBy,
-      {
-        entity_id: entity.id,
-        source_anchor_id: anchor.id,
-      }
-    )
-  } else {
-    const claimInput =
-      input.action === 'edit' && input.claim
-        ? input.claim
-        : {
-            entitiesInvolved: item.entitiesInvolved,
-            evidenceSummary: item.evidenceSummary,
-            relationshipType: item.relationshipType,
-            statement: item.statement,
-          }
-
-    const result = await createDraftClaim(claimInput, chunk)
-    createdIds.push(
-      result.claim.id,
-      result.anchor.id,
-      ...result.involvedEntities.map((entity) => entity.id)
-    )
-    nextExtractionData = updateExtractionItemReview(
-      extraction.extraction_data,
-      'claim',
-      input.itemId,
-      input.action === 'edit' ? 'edited' : 'confirmed',
-      createdIds,
-      reviewedBy,
-      {
-        claim_id: result.claim.id,
-        source_anchor_id: result.anchor.id,
-      }
-    )
+  if (error) {
+    throw error
   }
 
-  const rowStatus = getTerminalExtractionStatus(nextExtractionData)
-  const updateValues: TablesUpdate<'extractions'> = {
-    extraction_data: nextExtractionData,
-    reviewed_at: rowStatus === 'pending' ? extraction.reviewed_at : new Date().toISOString(),
-    reviewed_by: rowStatus === 'pending' ? extraction.reviewed_by : reviewedBy,
-    status: rowStatus,
-  }
-  const { error: updateExtractionError } = await supabase
-    .from('extractions')
-    .update(updateValues)
-    .eq('id', extraction.id)
-
-  if (updateExtractionError) {
-    throw updateExtractionError
+  if (!isReviewActionResult(data)) {
+    throw new Error('Review action returned an invalid payload.')
   }
 
-  return { createdIds, rowStatus }
+  return data
+}
+
+export const rejectFailedExtraction = async (extractionId: string): Promise<ReviewActionResult> => {
+  const { data, error } = await supabase.rpc('reject_failed_extraction', {
+    extraction_id: extractionId,
+  })
+
+  if (error) {
+    throw error
+  }
+
+  if (!isReviewActionResult(data)) {
+    throw new Error('Reject action returned an invalid payload.')
+  }
+
+  return data
 }
 
 export const adminSourceTitleExists = async (title: string) => {
