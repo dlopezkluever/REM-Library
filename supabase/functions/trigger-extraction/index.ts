@@ -1,4 +1,4 @@
-import { z } from 'npm:zod@4.1.13'
+import { z } from 'zod'
 
 import {
   corsHeaders,
@@ -607,7 +607,6 @@ Deno.serve(async (request) => {
 
     await requireAdminOrServiceRole(request, supabase)
     canUpdateSource = true
-    await updateSourceStage(supabase, sourceId, 'extracting')
 
     const { data: chunks, error: chunksError } = await supabase
       .from('chunks')
@@ -636,6 +635,8 @@ Deno.serve(async (request) => {
         source_id: sourceId,
       })
     }
+
+    await updateSourceStage(supabase, sourceId, 'extracting')
 
     const entities = await fetchActiveEntities(supabase)
 
