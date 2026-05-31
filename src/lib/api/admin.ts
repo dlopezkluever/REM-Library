@@ -505,6 +505,44 @@ export const createAdminSource = async (input: CreateAdminSourceInput) => {
   return data
 }
 
+export interface EntityTimelineDates {
+  date_era: string | null
+  date_sort_year: number | null
+}
+
+export const getEntityTimelineDates = async (
+  entityId: string
+): Promise<EntityTimelineDates> => {
+  const { data, error } = await supabase
+    .from('entities')
+    .select('date_era, date_sort_year')
+    .eq('id', entityId)
+    .single()
+
+  if (error) {
+    throw error
+  }
+
+  return data
+}
+
+export const updateEntityTimelineDates = async (
+  entityId: string,
+  dates: EntityTimelineDates
+): Promise<void> => {
+  const { error } = await supabase
+    .from('entities')
+    .update({
+      date_era: dates.date_era,
+      date_sort_year: dates.date_sort_year,
+    })
+    .eq('id', entityId)
+
+  if (error) {
+    throw error
+  }
+}
+
 export const triggerSourceTranscription = async (sourceId: string) => {
   const { error } = await supabase.functions.invoke('trigger-transcription', {
     body: { source_id: sourceId },
@@ -844,6 +882,8 @@ export const getAdminEntitiesPage = async ({
       confidence_override: row.confidence_override,
       confidence_score: row.confidence_score,
       created_at: row.created_at,
+      date_era: null,
+      date_sort_year: null,
       description: row.description,
       fts: null,
       id: row.id,
