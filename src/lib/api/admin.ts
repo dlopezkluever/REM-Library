@@ -895,11 +895,13 @@ export const updateAdminEntityStatus = async (entityId: string, status: ContentS
   return data
 }
 
-export const publishAdminEntities = async (entityIds: string[]) => {
+export const publishAdminEntities = async (
+  entityIds: string[]
+): Promise<{ entities: AdminEntityRow[]; confidenceUpdateFailed: boolean }> => {
   const uniqueEntityIds = uniqueStrings(entityIds)
 
   if (uniqueEntityIds.length === 0) {
-    return []
+    return { entities: [], confidenceUpdateFailed: false }
   }
 
   const { data, error } = await supabase
@@ -912,9 +914,15 @@ export const publishAdminEntities = async (entityIds: string[]) => {
     throw error
   }
 
-  await triggerConfidenceComputation(uniqueEntityIds)
+  let confidenceUpdateFailed = false
 
-  return data
+  try {
+    await triggerConfidenceComputation(uniqueEntityIds)
+  } catch {
+    confidenceUpdateFailed = true
+  }
+
+  return { entities: data, confidenceUpdateFailed }
 }
 
 export const getAdminClaimsPage = async ({
