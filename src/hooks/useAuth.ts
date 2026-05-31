@@ -2,7 +2,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { supabase } from '@/lib/supabase/client'
 
 export const useAuth = () => {
-  const { session, role, isLoading, hydrate, setSession, clearSession } = useAuthStore()
+  const { session, role, isLoading, error, hydrate, setSession, clearSession } = useAuthStore()
 
   const signIn = async (email: string, password: string) => {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
@@ -30,6 +30,7 @@ export const useAuth = () => {
     user: session?.user ?? null,
     role,
     isLoading,
+    error,
     hydrate,
     signIn,
     signOut,
