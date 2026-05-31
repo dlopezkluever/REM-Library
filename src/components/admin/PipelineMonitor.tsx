@@ -148,8 +148,8 @@ export const PipelineMonitor = () => {
                   <TableCell>
                     <div className="max-w-[340px]">
                       <p className="truncate font-body text-sm text-ink">{source.title}</p>
-                      <p className="font-body text-[11px] text-[#888]">
-                        {new Date(source.created_at).toLocaleDateString()}
+                      <p className="truncate font-body text-[11px] text-[#888]">
+                        {source.pipeline_error ?? new Date(source.created_at).toLocaleDateString()}
                       </p>
                     </div>
                   </TableCell>

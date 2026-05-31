@@ -178,6 +178,15 @@ export default function AdminSourceDetailPage() {
         </div>
       ) : null}
 
+      {source?.pipeline_error ? (
+        <div className="rounded border border-0.5 border-terracotta/30 bg-terracotta-light p-4">
+          <p className="font-display text-[9px] uppercase tracking-label text-terracotta-dark">
+            Latest Pipeline Error
+          </p>
+          <p className="mt-1 font-body text-sm text-terracotta-dark">{source.pipeline_error}</p>
+        </div>
+      ) : null}
+
       {sourceQuery.error ? (
         <div className="rounded border border-0.5 border-terracotta/30 bg-terracotta-light p-5">
           <p className="font-body text-sm text-terracotta-dark">Source could not load.</p>
