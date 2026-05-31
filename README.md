@@ -108,4 +108,8 @@ Set `VITE_SUPABASE_INTEGRATION_TESTS=true` when running Vitest against the local
 | `VITE_SUPABASE_INTEGRATION_TESTS` | Enables local Supabase integration tests when set to `true` |
 | `SUPABASE_SERVICE_ROLE_KEY` | Service role key (server-side / pipeline use only) |
 | `ASSEMBLYAI_API_KEY`        | AssemblyAI transcription API key                   |
+| `ASSEMBLYAI_WEBHOOK_URL`    | Public URL for the AssemblyAI completion webhook   |
+| `ASSEMBLYAI_WEBHOOK_SECRET` | Shared secret sent by AssemblyAI to the webhook    |
+| `ASSEMBLYAI_SPEECH_MODELS`  | Optional comma-separated AssemblyAI model fallback list |
 | `ANTHROPIC_API_KEY`         | Claude API key for the extraction pipeline         |
+| `ANTHROPIC_MODEL`           | Optional Claude model override for extraction      |
