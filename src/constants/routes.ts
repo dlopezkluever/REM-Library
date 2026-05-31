@@ -6,6 +6,9 @@ export const ROUTES = {
   SOURCES: '/sources',
   SOURCE_DETAIL: '/source/:id',
   SEARCH: '/search',
+  EXPLORATIONS: '/explorations',
+  EXPLORATION_PLAYER: '/explorations/:id',
+  TIMELINE: '/timeline',
   ADMIN_LOGIN: '/admin/login',
   ADMIN_DASHBOARD: '/admin/dashboard',
   ADMIN_SOURCES: '/admin/sources',
@@ -15,4 +18,5 @@ export const ROUTES = {
   ADMIN_ENTITIES: '/admin/entities',
   ADMIN_CLAIMS: '/admin/claims',
   ADMIN_SETTINGS: '/admin/settings',
+  ADMIN_EXPLORATION_NEW: '/admin/explorations/new',
 } as const
