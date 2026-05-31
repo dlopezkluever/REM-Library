@@ -15,13 +15,20 @@ export const formatTimestamp = (seconds: number | null) => {
     return null
   }
 
-  const hours = Math.floor(seconds / 3600)
-  const minutes = Math.floor((seconds % 3600) / 60)
-  const remainingSeconds = seconds % 60
+  const totalMilliseconds = Math.round(seconds * 1000)
+  const wholeSeconds = Math.floor(totalMilliseconds / 1000)
+  const milliseconds = totalMilliseconds % 1000
+  const hours = Math.floor(wholeSeconds / 3600)
+  const minutes = Math.floor((wholeSeconds % 3600) / 60)
+  const remainingSeconds = wholeSeconds % 60
+  const secondLabel =
+    milliseconds > 0
+      ? `${remainingSeconds.toString().padStart(2, '0')}.${milliseconds
+          .toString()
+          .padStart(3, '0')}`
+      : remainingSeconds.toString().padStart(2, '0')
 
-  return [hours, minutes, remainingSeconds]
-    .map((part) => part.toString().padStart(2, '0'))
-    .join(':')
+  return [hours, minutes].map((part) => part.toString().padStart(2, '0')).join(':') + `:${secondLabel}`
 }
 
 export const formatAnchorCitation = ({
