@@ -24,11 +24,22 @@ interface GraphCanvasProps {
   focusedNodeId: string | null
   onFocusBlocked: (nodeId: string, reason: GraphFocusBlockReason) => void
   onFocusedNodeSettled: (nodeId: string) => void
+  // When set (guided explorations), these nodes are highlighted and every
+  // other node is dimmed. Filters are bypassed so the tour can reference any
+  // published entity regardless of the viewer's saved graph filters.
+  highlightNodeIds?: readonly string[] | null
 }
 
 export type GraphFocusBlockReason = 'hidden' | 'missing'
 
-const applyFiltersToGraph = (graph: MythographGraph) => {
+const applyFiltersToGraph = (graph: MythographGraph, bypassFilters: boolean) => {
+  if (bypassFilters) {
+    graph.forEachNode((node) => graph.setNodeAttribute(node, 'hidden', false))
+    graph.forEachEdge((edge) => graph.setEdgeAttribute(edge, 'hidden', false))
+
+    return graph.order
+  }
+
   const filterState = useGraphStore.getState().filterState
   const hiddenNodeIds = computeHiddenNodeIds(graph, filterState)
 
@@ -41,6 +52,18 @@ const applyFiltersToGraph = (graph: MythographGraph) => {
   })
 
   return graph.order - hiddenNodeIds.size
+}
+
+const collectExplorationFocusEdges = (graph: MythographGraph, focusNodeIds: Set<string>) => {
+  const focusedEdgeIds = new Set<string>()
+
+  graph.forEachEdge((edge, _, source, target) => {
+    if (focusNodeIds.has(source) && focusNodeIds.has(target)) {
+      focusedEdgeIds.add(edge)
+    }
+  })
+
+  return focusedEdgeIds
 }
 
 const collectFocusSets = (graph: MythographGraph, focusedNodeId: string | null) => {
@@ -66,6 +89,7 @@ export const GraphCanvas = ({
   focusedNodeId,
   onFocusBlocked,
   onFocusedNodeSettled,
+  highlightNodeIds = null,
 }: GraphCanvasProps) => {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const graphRef = useRef<MythographGraph | null>(null)
@@ -81,6 +105,20 @@ export const GraphCanvas = ({
   const setHoveredNodeId = useGraphStore((state) => state.setHoveredNodeId)
   const setActiveNodeId = useGraphStore((state) => state.setActiveNodeId)
   const clearInteraction = useGraphStore((state) => state.clearInteraction)
+
+  const explorationFocusIds = useMemo(
+    () => (highlightNodeIds ? new Set(highlightNodeIds) : null),
+    [highlightNodeIds]
+  )
+  const explorationActive = explorationFocusIds !== null
+  // The renderer is created once; the creation effect reads the latest
+  // exploration focus through this ref so step changes never re-instantiate
+  // Sigma (which would reset the tour camera).
+  const explorationFocusIdsRef = useRef(explorationFocusIds)
+
+  useEffect(() => {
+    explorationFocusIdsRef.current = explorationFocusIds
+  }, [explorationFocusIds])
 
   const entitiesQuery = useQuery({
     queryKey: ['entities', 'published'],
@@ -131,11 +169,19 @@ export const GraphCanvas = ({
     }
 
     graphRef.current = graph
-    setVisibleNodeCount(applyFiltersToGraph(graph))
+    const explorationFocus = explorationFocusIdsRef.current
+    const explorationOn = explorationFocus !== null
+    setVisibleNodeCount(applyFiltersToGraph(graph, explorationOn))
 
-    const focusNodeId =
-      useGraphStore.getState().hoveredNodeId ?? useGraphStore.getState().activeNodeId
-    const { focusedEdgeIds, highlightedNodeIds } = collectFocusSets(graph, focusNodeId)
+    const focusNodeId = explorationOn
+      ? null
+      : (useGraphStore.getState().hoveredNodeId ?? useGraphStore.getState().activeNodeId)
+    const { focusedEdgeIds, highlightedNodeIds } = explorationFocus
+      ? {
+          focusedEdgeIds: collectExplorationFocusEdges(graph, explorationFocus),
+          highlightedNodeIds: explorationFocus,
+        }
+      : collectFocusSets(graph, focusNodeId)
     const GlowProgram = createNodeCompoundProgram<
       GraphNodeAttributes,
       GraphEdgeAttributes,
@@ -159,7 +205,7 @@ export const GraphCanvas = ({
         defaultNodeColor: '#4A7C6F',
         edgeReducer: createEdgeReducer({
           focusedEdgeIds,
-          hasFocusedNode: focusNodeId !== null,
+          hasFocusedNode: explorationOn || focusNodeId !== null,
         }),
         labelColor: { color: 'rgba(255,255,255,0.82)' },
         labelFont: 'Cinzel, Georgia, serif',
@@ -169,10 +215,11 @@ export const GraphCanvas = ({
           glow: GlowProgram,
         },
         nodeReducer: createNodeReducer({
-          activeNodeId: useGraphStore.getState().activeNodeId,
+          activeNodeId: explorationOn ? null : useGraphStore.getState().activeNodeId,
           allLabelsVisible: () => allLabelsVisibleRef.current,
+          focusNodeIds: explorationFocus,
           highlightedNodeIds,
-          hoveredNodeId: useGraphStore.getState().hoveredNodeId,
+          hoveredNodeId: explorationOn ? null : useGraphStore.getState().hoveredNodeId,
         }),
         renderEdgeLabels: false,
         zIndex: true,
@@ -209,10 +256,10 @@ export const GraphCanvas = ({
       return
     }
 
-    const nextVisibleNodeCount = applyFiltersToGraph(currentGraph)
+    const nextVisibleNodeCount = applyFiltersToGraph(currentGraph, explorationActive)
     setVisibleNodeCount(nextVisibleNodeCount)
 
-    if (activeNodeId && currentGraph.hasNode(activeNodeId)) {
+    if (!explorationActive && activeNodeId && currentGraph.hasNode(activeNodeId)) {
       const activeAttributes = currentGraph.getNodeAttributes(activeNodeId)
 
       if (activeAttributes.hidden) {
@@ -221,13 +268,32 @@ export const GraphCanvas = ({
     }
 
     renderer.refresh()
-  }, [activeNodeId, filterState, setActiveNodeId])
+  }, [activeNodeId, explorationActive, filterState, setActiveNodeId])
 
   useEffect(() => {
     const currentGraph = graphRef.current
     const renderer = sigmaRef.current
 
     if (!currentGraph || !renderer) {
+      return
+    }
+
+    if (explorationFocusIds) {
+      renderer.setSettings({
+        edgeReducer: createEdgeReducer({
+          focusedEdgeIds: collectExplorationFocusEdges(currentGraph, explorationFocusIds),
+          hasFocusedNode: true,
+        }),
+        nodeReducer: createNodeReducer({
+          activeNodeId: null,
+          allLabelsVisible: () => allLabelsVisibleRef.current,
+          focusNodeIds: explorationFocusIds,
+          highlightedNodeIds: explorationFocusIds,
+          hoveredNodeId: null,
+        }),
+      })
+      renderer.refresh({ schedule: true })
+
       return
     }
 
@@ -247,7 +313,7 @@ export const GraphCanvas = ({
       }),
     })
     renderer.refresh({ schedule: true })
-  }, [activeNodeId, hoveredNodeId])
+  }, [activeNodeId, explorationFocusIds, hoveredNodeId])
 
   useEffect(() => {
     const currentGraph = graphRef.current
@@ -285,6 +351,44 @@ export const GraphCanvas = ({
       )
       .then(() => onFocusedNodeSettled(focusedNodeId))
   }, [filterState, focusedNodeId, graph, onFocusBlocked, onFocusedNodeSettled])
+
+  // Guided explorations: pan/zoom the camera to frame the current step's
+  // focus nodes whenever the highlighted set changes.
+  useEffect(() => {
+    const currentGraph = graphRef.current
+    const renderer = sigmaRef.current
+
+    if (!explorationFocusIds || explorationFocusIds.size === 0 || !currentGraph || !renderer) {
+      return
+    }
+
+    const xs: number[] = []
+    const ys: number[] = []
+
+    explorationFocusIds.forEach((nodeId) => {
+      if (currentGraph.hasNode(nodeId)) {
+        const attributes = currentGraph.getNodeAttributes(nodeId)
+        xs.push(attributes.x)
+        ys.push(attributes.y)
+      }
+    })
+
+    if (xs.length === 0) {
+      return
+    }
+
+    const centerX = xs.reduce((sum, value) => sum + value, 0) / xs.length
+    const centerY = ys.reduce((sum, value) => sum + value, 0) / ys.length
+
+    void renderer.getCamera().animate(
+      {
+        ratio: xs.length === 1 ? 0.5 : 0.75,
+        x: centerX,
+        y: centerY,
+      },
+      { duration: 600, easing: 'cubicInOut' }
+    )
+  }, [explorationFocusIds, graph])
 
   if (entitiesQuery.isError || relationshipsQuery.isError) {
     return (
