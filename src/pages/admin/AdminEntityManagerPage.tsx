@@ -1,8 +1,17 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, Check, ChevronLeft, ChevronRight, RefreshCw, Search } from 'lucide-react'
+import {
+  AlertTriangle,
+  CalendarClock,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  RefreshCw,
+  Search,
+} from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import {
   Table,
@@ -15,13 +24,18 @@ import {
 import { ENTITY_LABELS } from '@/constants/entityTypes'
 import {
   getAdminEntitiesPage,
+  getEntityTimelineDates,
   publishAdminEntities,
   triggerConfidenceComputation,
   updateAdminEntityStatus,
+  updateEntityTimelineDates,
   type AdminEntityRow,
   type ContentStatus,
 } from '@/lib/api/admin'
+import { TIMELINE_ERAS } from '@/lib/timeline/eras'
 import { cn } from '@/lib/utils'
+
+const TIMELINE_ENTITY_TYPES = new Set(['narrative', 'figure'])
 
 const adminEntitiesQueryKey = ['admin', 'entities'] as const
 
@@ -82,6 +96,8 @@ export default function AdminEntityManagerPage() {
     mutationFn: triggerConfidenceComputation,
     onSuccess: () => setFailedConfidenceIds([]),
   })
+
+  const [datesEntity, setDatesEntity] = useState<AdminEntityRow | null>(null)
 
   const entityPage = entitiesQuery.data
   const entities = entityPage?.entities ?? []
@@ -291,7 +307,19 @@ export default function AdminEntityManagerPage() {
                     {entity.aliases.length > 0 ? entity.aliases.join(', ') : 'None'}
                   </TableCell>
                   <TableCell>
-                    <div className="flex justify-end">
+                    <div className="flex justify-end gap-2">
+                      {TIMELINE_ENTITY_TYPES.has(entity.type) ? (
+                        <Button
+                          aria-label={`Edit timeline dates for ${entity.name}`}
+                          size="sm"
+                          type="button"
+                          variant="ghost"
+                          onClick={() => setDatesEntity(entity)}
+                        >
+                          <CalendarClock aria-hidden="true" className="h-3.5 w-3.5" />
+                          Dates
+                        </Button>
+                      ) : null}
                       <Button
                         disabled={updating || entity.status === 'disputed'}
                         size="sm"
@@ -344,6 +372,130 @@ export default function AdminEntityManagerPage() {
             <ChevronRight aria-hidden="true" className="h-3.5 w-3.5" />
           </Button>
         </div>
+      </div>
+
+      <Dialog open={datesEntity !== null} onOpenChange={(open) => !open && setDatesEntity(null)}>
+        <DialogContent>
+          {datesEntity ? (
+            <TimelineDatesEditor entity={datesEntity} onClose={() => setDatesEntity(null)} />
+          ) : null}
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+const TimelineDatesEditor = ({
+  entity,
+  onClose,
+}: {
+  entity: AdminEntityRow
+  onClose: () => void
+}) => {
+  const datesQuery = useQuery({
+    queryKey: ['admin', 'entity-dates', entity.id],
+    queryFn: () => getEntityTimelineDates(entity.id),
+  })
+
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>Timeline dates</DialogTitle>
+        <p className="font-body text-sm text-[#777]">
+          Set the era and sort year for <span className="text-ink">{entity.name}</span>. These place
+          the entity on the public timeline. Use a negative year for BCE (e.g. -1200).
+        </p>
+      </DialogHeader>
+
+      {datesQuery.isLoading || !datesQuery.data ? (
+        <p className="mt-4 font-body text-sm text-[#777]">Loading current dates…</p>
+      ) : (
+        <TimelineDatesForm entityId={entity.id} initial={datesQuery.data} onClose={onClose} />
+      )}
+    </>
+  )
+}
+
+const TimelineDatesForm = ({
+  entityId,
+  initial,
+  onClose,
+}: {
+  entityId: string
+  initial: { date_era: string | null; date_sort_year: number | null }
+  onClose: () => void
+}) => {
+  const queryClient = useQueryClient()
+  const [dateEra, setDateEra] = useState(initial.date_era ?? '')
+  const [dateSortYear, setDateSortYear] = useState(
+    initial.date_sort_year !== null ? String(initial.date_sort_year) : ''
+  )
+
+  const saveMutation = useMutation({
+    mutationFn: (dates: { date_era: string | null; date_sort_year: number | null }) =>
+      updateEntityTimelineDates(entityId, dates),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['timeline', 'entities'] })
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'entity-dates', entityId] })
+      onClose()
+    },
+  })
+
+  const handleSave = () => {
+    const trimmedYear = dateSortYear.trim()
+    const parsedYear = trimmedYear === '' ? null : Number(trimmedYear)
+
+    saveMutation.mutate({
+      date_era: dateEra.trim() || null,
+      date_sort_year:
+        parsedYear !== null && Number.isFinite(parsedYear) ? Math.trunc(parsedYear) : null,
+    })
+  }
+
+  return (
+    <div className="mt-4 space-y-4">
+      <label className="block">
+        <span className="mb-1.5 block font-display text-[9px] uppercase tracking-label text-[#777]">
+          Era
+        </span>
+        <Input
+          list="timeline-era-options"
+          placeholder="Classical Antiquity"
+          value={dateEra}
+          onChange={(event) => setDateEra(event.target.value)}
+        />
+        <datalist id="timeline-era-options">
+          {TIMELINE_ERAS.map((era) => (
+            <option key={era.key} value={era.label} />
+          ))}
+        </datalist>
+      </label>
+
+      <label className="block">
+        <span className="mb-1.5 block font-display text-[9px] uppercase tracking-label text-[#777]">
+          Sort year
+        </span>
+        <Input
+          placeholder="-1200"
+          type="number"
+          value={dateSortYear}
+          onChange={(event) => setDateSortYear(event.target.value)}
+        />
+      </label>
+
+      {saveMutation.isError ? (
+        <p className="font-body text-sm text-terracotta-dark">
+          Dates could not be saved. Please try again.
+        </p>
+      ) : null}
+
+      <div className="flex justify-end gap-2">
+        <Button size="sm" type="button" variant="outline" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button disabled={saveMutation.isPending} size="sm" type="button" onClick={handleSave}>
+          {saveMutation.isPending ? 'Saving…' : 'Save dates'}
+        </Button>
       </div>
     </div>
   )
