@@ -9,7 +9,7 @@ const statCards = [
   { key: 'publishedEntities', label: 'Published Entities' },
   { key: 'publishedClaims', label: 'Published Claims' },
   { key: 'totalSources', label: 'Total Sources' },
-  { key: 'pendingReview', label: 'Pending Review' },
+  { key: 'sourcesInReview', label: 'Sources In Review' },
 ] as const
 
 const entityTypeLabels = {
@@ -204,7 +204,7 @@ export default function AdminDashboardPage() {
               Pipeline Monitor
             </h2>
             <p className="mt-1 font-body text-xs text-[#777]">
-              Sources ordered by newest ingestion record, updated from Supabase Realtime.
+              Recent source activity, updated from Supabase Realtime.
             </p>
           </div>
         </div>

@@ -12,7 +12,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { getAdminSources, subscribeToSourceUpdates, type AdminSourceRow } from '@/lib/api/admin'
+import {
+  applySourceRealtimeChange,
+  getAdminSources,
+  subscribeToSourceUpdates,
+  type AdminSourceRow,
+} from '@/lib/api/admin'
 import { cn } from '@/lib/utils'
 
 const adminSourcesQueryKey = ['admin', 'sources'] as const
@@ -28,8 +33,11 @@ const formatLabels: Record<AdminSourceRow['format'], string> = {
 const stageLabels: Record<AdminSourceRow['pipeline_stage'], string> = {
   uploaded: 'Uploaded',
   transcribing: 'Transcribing',
+  transcribing_failed: 'Transcription Failed',
   chunking: 'Chunking',
+  chunking_failed: 'Chunking Failed',
   extracting: 'Extracting',
+  extracting_failed: 'Extraction Failed',
   review: 'Review',
   curated: 'Curated',
   published: 'Published',
@@ -58,6 +66,10 @@ const FormatIcon = ({ format }: { format: AdminSourceRow['format'] }) => {
 }
 
 const getStageClassName = (stage: AdminSourceRow['pipeline_stage']) => {
+  if (stage.endsWith('_failed')) {
+    return 'border-terracotta/50 bg-terracotta-light text-terracotta-dark'
+  }
+
   if (stage === 'review') {
     return 'border-terracotta/50 bg-terracotta-light text-terracotta-dark'
   }
@@ -95,12 +107,6 @@ const formatRelativeDuration = (fromIso: string, now: number) => {
   return `${days}d ${hours % 24}h`
 }
 
-const sortSourcesByCreatedAt = (sources: AdminSourceRow[]) => {
-  return [...sources].sort(
-    (first, second) => new Date(second.created_at).getTime() - new Date(first.created_at).getTime()
-  )
-}
-
 export const PipelineMonitor = () => {
   const queryClient = useQueryClient()
   const [now, setNow] = useState(() => Date.now())
@@ -119,20 +125,9 @@ export const PipelineMonitor = () => {
   }, [])
 
   useEffect(() => {
-    return subscribeToSourceUpdates((updatedSource) => {
+    return subscribeToSourceUpdates((change) => {
       queryClient.setQueryData<AdminSourceRow[]>(adminSourcesQueryKey, (currentSources) => {
-        if (!currentSources) {
-          return [updatedSource]
-        }
-
-        const sourceExists = currentSources.some((source) => source.id === updatedSource.id)
-        const nextSources = sourceExists
-          ? currentSources.map((source) =>
-              source.id === updatedSource.id ? updatedSource : source
-            )
-          : [updatedSource, ...currentSources]
-
-        return sortSourcesByCreatedAt(nextSources)
+        return applySourceRealtimeChange(currentSources, change)
       })
     })
   }, [queryClient])
@@ -178,6 +173,7 @@ export const PipelineMonitor = () => {
           ) : (
             sources.map((source) => {
               const isReviewStage = source.pipeline_stage === 'review'
+              const isFailedStage = source.pipeline_stage.endsWith('_failed')
               const actionRoute = isReviewStage
                 ? `/admin/review?source=${source.id}`
                 : `/admin/sources?source=${source.id}`
@@ -215,12 +211,12 @@ export const PipelineMonitor = () => {
                     </Badge>
                   </TableCell>
                   <TableCell className="font-body text-xs text-[#777]">
-                    {formatRelativeDuration(source.updated_at, now)}
+                    {formatRelativeDuration(source.pipeline_stage_entered_at, now)}
                   </TableCell>
                   <TableCell className="text-right">
                     <Button asChild size="sm" variant={isReviewStage ? 'default' : 'outline'}>
                       <Link to={actionRoute}>
-                        {isReviewStage ? 'Review' : 'View'}
+                        {isFailedStage ? 'Re-run' : isReviewStage ? 'Review' : 'View'}
                         <ExternalLink aria-hidden="true" className="h-3 w-3" />
                       </Link>
                     </Button>
