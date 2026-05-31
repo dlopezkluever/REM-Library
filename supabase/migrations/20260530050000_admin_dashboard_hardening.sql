@@ -86,6 +86,7 @@ with
       end as label,
       count(*)::integer as count
     from confidence_values
+    where confidence is not null
     group by label
   )
 select jsonb_build_object(

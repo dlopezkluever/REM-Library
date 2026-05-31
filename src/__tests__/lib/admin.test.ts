@@ -1,4 +1,8 @@
+/// <reference types="node" />
+
 import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import {
   applySourceRealtimeChange,
   sortSourcesByCreatedAt,
@@ -78,5 +82,18 @@ describe('admin API helpers', () => {
     })
 
     expect(nextSources.map((source) => source.id)).toEqual(['retained'])
+  })
+})
+
+describe('admin dashboard migration', () => {
+  it('does not count null confidence values in the high confidence bucket', () => {
+    const migration = readFileSync(
+      join(process.cwd(), 'supabase/migrations/20260530050000_admin_dashboard_hardening.sql'),
+      'utf8'
+    )
+
+    expect(migration).toMatch(
+      /from confidence_values\s+where confidence is not null\s+group by label/
+    )
   })
 })
