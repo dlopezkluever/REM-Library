@@ -18,6 +18,7 @@ export type Database = {
           raw_text: string
           source_id: string
           speaker: string | null
+          speaker_turns: Json
           start_sec: number | null
         }
         Insert: {
@@ -29,6 +30,7 @@ export type Database = {
           raw_text: string
           source_id: string
           speaker?: string | null
+          speaker_turns?: Json
           start_sec?: number | null
         }
         Update: {
@@ -40,6 +42,7 @@ export type Database = {
           raw_text?: string
           source_id?: string
           speaker?: string | null
+          speaker_turns?: Json
           start_sec?: number | null
         }
         Relationships: [
@@ -399,6 +402,7 @@ export type Database = {
           format: Database['public']['Enums']['source_format']
           id: string
           page_count: number | null
+          pipeline_error: string | null
           pipeline_stage: Database['public']['Enums']['pipeline_stage']
           pipeline_stage_entered_at: string
           publication_date: string | null
@@ -418,6 +422,7 @@ export type Database = {
           format: Database['public']['Enums']['source_format']
           id?: string
           page_count?: number | null
+          pipeline_error?: string | null
           pipeline_stage?: Database['public']['Enums']['pipeline_stage']
           pipeline_stage_entered_at?: string
           publication_date?: string | null
@@ -437,6 +442,7 @@ export type Database = {
           format?: Database['public']['Enums']['source_format']
           id?: string
           page_count?: number | null
+          pipeline_error?: string | null
           pipeline_stage?: Database['public']['Enums']['pipeline_stage']
           pipeline_stage_entered_at?: string
           publication_date?: string | null
@@ -468,6 +474,7 @@ export type Database = {
           id: string
           page_count: number | null
           pending_review_count: number
+          pipeline_error: string | null
           pipeline_stage: Database['public']['Enums']['pipeline_stage']
           pipeline_stage_entered_at: string
           publication_date: string | null
