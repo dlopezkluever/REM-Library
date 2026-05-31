@@ -8,6 +8,7 @@ import { getPublishedEntities, persistEntityPositions } from '@/lib/api/entities
 import { getAllPublishedRelationships } from '@/lib/api/relationships'
 import { buildGraphology, type MythographGraph } from '@/lib/graph/buildGraphology'
 import { createEdgeReducer } from '@/lib/graph/edgeReducers'
+import { computeHiddenNodeIds } from '@/lib/graph/graphFilters'
 import { GlowNodeProgram } from '@/lib/graph/GlowNodeProgram'
 import { createNodeReducer } from '@/lib/graph/nodeReducers'
 import type {
@@ -27,46 +28,12 @@ interface GraphCanvasProps {
 
 export type GraphFocusBlockReason = 'hidden' | 'missing'
 
-const getCultureScopedNodeIds = (graph: MythographGraph, cultureIds: string[]) => {
-  const scopedNodeIds = new Set<string>(cultureIds)
-
-  if (cultureIds.length === 0) {
-    return scopedNodeIds
-  }
-
-  graph.forEachEdge((_, attributes, source, target) => {
-    if (attributes.relationshipType !== 'belongs_to') {
-      return
-    }
-
-    if (cultureIds.includes(target)) {
-      scopedNodeIds.add(source)
-      scopedNodeIds.add(target)
-    }
-  })
-
-  return scopedNodeIds
-}
-
 const applyFiltersToGraph = (graph: MythographGraph) => {
   const filterState = useGraphStore.getState().filterState
-  const cultureScopedNodeIds = getCultureScopedNodeIds(graph, filterState.cultureIds)
-  const hiddenNodeIds = new Set<string>()
+  const hiddenNodeIds = computeHiddenNodeIds(graph, filterState)
 
-  graph.forEachNode((node, attributes) => {
-    const passesType = filterState.entityTypes[attributes.entityType]
-    const passesConfidence = attributes.confidence >= filterState.confidenceThreshold
-    const passesCulture =
-      filterState.cultureIds.length === 0 ||
-      cultureScopedNodeIds.has(node) ||
-      filterState.cultureIds.includes(node)
-    const hidden = !passesType || !passesConfidence || !passesCulture
-
-    graph.setNodeAttribute(node, 'hidden', hidden)
-
-    if (hidden) {
-      hiddenNodeIds.add(node)
-    }
+  graph.forEachNode((node) => {
+    graph.setNodeAttribute(node, 'hidden', hiddenNodeIds.has(node))
   })
 
   graph.forEachEdge((edge, _, source, target) => {
