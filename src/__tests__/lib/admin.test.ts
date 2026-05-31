@@ -26,6 +26,7 @@ const createSource = (
   format: 'audio',
   id,
   page_count: null,
+  pipeline_error: null,
   pipeline_stage: 'uploaded',
   pipeline_stage_entered_at: createdAt,
   publication_date: null,
@@ -115,7 +116,14 @@ describe('admin API helpers', () => {
       'trigger-transcription'
     )
     expect(getPipelineRerunAction('extracting_failed').functionName).toBe('trigger-extraction')
-    expect(getPipelineRerunAction('chunking_failed').functionName).toBeNull()
+    expect(
+      getPipelineRerunAction('chunking_failed', {
+        file_path: 'source.mp3',
+        format: 'audio',
+        status: 'draft',
+        transcript_id: 'transcript-id',
+      }).functionName
+    ).toBe('trigger-chunking')
   })
 
   it('disables reruns for URL-only uploaded sources', () => {
@@ -123,10 +131,34 @@ describe('admin API helpers', () => {
       file_path: null,
       format: 'url',
       status: 'draft',
+      transcript_id: null,
     })
 
     expect(action.functionName).toBeNull()
     expect(action.disabledReason).toContain('URL ingestion')
+  })
+
+  it('disables transcription reruns for document sources', () => {
+    const action = getPipelineRerunAction('uploaded', {
+      file_path: 'source.pdf',
+      format: 'book',
+      status: 'draft',
+      transcript_id: null,
+    })
+
+    expect(action.functionName).toBeNull()
+    expect(action.disabledReason).toContain('document ingestion')
+  })
+
+  it('maps stale transcribing sources with a transcript id to chunking recovery', () => {
+    const action = getPipelineRerunAction('transcribing', {
+      file_path: 'source.mp3',
+      format: 'audio',
+      status: 'draft',
+      transcript_id: 'transcript-id',
+    })
+
+    expect(action.functionName).toBe('trigger-chunking')
   })
 })
 
@@ -184,5 +216,17 @@ describe('admin dashboard migration', () => {
     expect(migration).toContain('get_admin_source_list_rows')
     expect(migration).toContain('pending_review_count')
     expect(migration).toContain('left join lateral')
+  })
+
+  it('adds ingestion pipeline audit schema fixes', () => {
+    const migration = readFileSync(
+      join(process.cwd(), 'supabase/migrations/20260531120000_ingestion_pipeline_audit_fixes.sql'),
+      'utf8'
+    )
+
+    expect(migration).toContain('pipeline_error text')
+    expect(migration).toContain('speaker_turns jsonb')
+    expect(migration).toContain('extractions_chunk_id_unique')
+    expect(migration).toContain('claim_provider_request_slot')
   })
 })
