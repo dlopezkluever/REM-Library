@@ -58,3 +58,12 @@
 3. For claim export: generate a Markdown string with the claim statement, argument, confidence score, entities involved, and full source citations with timestamps/pages in a footnote format.
 4. Add citation format selection in the export dialog: "Informal (Mythograph citation)" vs. "Chicago-style" (for academic use). Chicago style formats the source metadata as: Author Last, First. "Source Title." Format, Date. Timestamp/Page.
 5. Add a "Copy link" button on every entity, claim, and source page: copies the canonical URL to the clipboard with a brief toast notification "Link copied."
+
+---
+
+## Post-audit implementation clarifications
+
+- 3D/2D toggle preservation means active-node focus is preserved across renderers. General free-pan/free-zoom viewport preservation is not treated as equivalent between Sigma 2D and Three.js 3D cameras.
+- 3D performance is protected by the top 2,000 node cap. Manual benchmark target: verify the capped 3D graph stays usable on a seeded graph with at least 5,000 published nodes, and record FPS/device notes in a revised audit when that seed exists.
+- Timeline zoom supports explicit zoom buttons, desktop trackpad pinch through wheel events, and touch two-pointer pinch on the timeline surface.
+- Guided explorations now use draft/published state. Public list and player routes only return published explorations; draft rows and steps are admin-only.
