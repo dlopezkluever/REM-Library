@@ -111,6 +111,7 @@ export default function ClaimDetailPage() {
               buildExport={(options) =>
                 buildClaimExport(
                   {
+                    canonicalUrl: window.location.href,
                     claim,
                     entities: (entitiesQuery.data ?? []).map((entity) => ({
                       name: entity.name,
