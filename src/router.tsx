@@ -7,6 +7,7 @@ import GraphPage from '@/pages/GraphPage'
 import ExplorationsPage from '@/pages/ExplorationsPage'
 import ExplorationPlayerPage from '@/pages/ExplorationPlayerPage'
 import TimelinePage from '@/pages/TimelinePage'
+import ComparisonPage from '@/pages/compare/ComparisonPage'
 import EncyclopediaBrowsePage from '@/pages/encyclopedia/EncyclopediaBrowsePage'
 import EntityDetailPage from '@/pages/entity/EntityDetailPage'
 import ClaimDetailPage from '@/pages/claim/ClaimDetailPage'
@@ -47,6 +48,7 @@ export const router = createBrowserRouter([
       { path: '/search', element: <SearchPage /> },
       { path: '/explorations', element: <ExplorationsPage /> },
       { path: '/timeline', element: <TimelinePage /> },
+      { path: '/compare', element: <ComparisonPage /> },
     ],
   },
   {

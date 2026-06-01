@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ExternalLink } from 'lucide-react'
 import { EntityChip } from '@/components/entity/EntityChip'
+import { CopyLinkButton } from '@/components/common/CopyLinkButton'
 import { TranscriptViewer } from '@/components/source/TranscriptViewer'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
@@ -130,6 +131,9 @@ export default function SourceDetailPage() {
               {source.description}
             </p>
           ) : null}
+          <div className="mt-5">
+            <CopyLinkButton />
+          </div>
         </header>
 
         {source.format === 'audio' || source.format === 'video' ? (
