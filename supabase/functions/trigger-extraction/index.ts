@@ -120,7 +120,14 @@ const tokenize = (text: string) => {
   return new Set(matches ?? [])
 }
 
-const getRelevantEntityNames = (entities: EntityNameRow[], chunks: ChunkRow[]) => {
+const countWords = (text: string) => {
+  return text.match(/[a-z0-9]+/gi)?.length ?? 0
+}
+
+const getRelevantEntityNames = (
+  entities: EntityNameRow[],
+  chunks: ChunkRow[]
+): RelevantEntity[] => {
   const batchTokens = tokenize(chunks.map((chunk) => chunk.raw_text).join(' '))
 
   return entities
@@ -150,9 +157,31 @@ const getRelevantEntityNames = (entities: EntityNameRow[], chunks: ChunkRow[]) =
     .map(({ aliases, name }) => ({ aliases, name }))
 }
 
-const systemPrompt = `You extract structured mythology knowledge graph data from source transcript chunks.
+const systemPrompt = `You are an extraction engine for a comparative mythology knowledge graph.
 
-Use the provided canonical entity list and aliases when a mention clearly maps to an existing entity. Do not invent evidence beyond the chunk text. If a chunk has no useful graph data, return empty entities and claims for that chunk.`
+Return only structured extraction data through the provided tool. Create one extraction object per input chunk.
+
+For each chunk, identify:
+- entities: symbols, figures, narratives, cultures, and tropes that are directly discussed in the chunk.
+- claims: sourced interpretive statements that connect one or more entities and are supported by the chunk text.
+
+Entity rules:
+- Use only these entity types: symbol, figure, narrative, culture, trope.
+- Each input chunk includes its own canonical_entities candidates.
+- Prefer the canonical entity name from that chunk's canonical_entities whenever a mention clearly matches that name or one of its aliases.
+- Do not create a duplicate entity with a spelling variant, epithet, title, translation, or plural form when a canonical entity is a clear match.
+- Put alternative surface forms from the chunk in aliases.
+- Keep descriptions concise and grounded in the chunk; use null only when the chunk does not support a useful description.
+- Exclude passing mentions that do not carry meaningful graph value.
+
+Claim rules:
+- Use only these relationship types: symbolizes, appears_in, belongs_to, parallels, instantiates, supports.
+- entities_involved must contain canonical names where available and must match entity names in this chunk's entities list when the entity is newly extracted.
+- The statement must be an atomic claim, not a paragraph.
+- evidence_summary must briefly explain what in the chunk supports the claim.
+- Do not infer beyond the chunk or use outside knowledge.
+
+If a chunk has no useful entities or claims, return empty arrays for that chunk.`
 
 const extractionTool = {
   description: 'Record structured mythology entities and claims extracted from transcript chunks.',
@@ -224,8 +253,9 @@ const extractionTool = {
   name: 'record_extractions',
 }
 
-const userPrompt = (chunks: ChunkRow[], relevantEntities: RelevantEntity[]) => {
+const userPrompt = (chunks: ChunkRow[], entities: EntityNameRow[]) => {
   const chunkPayload = chunks.map((chunk) => ({
+    canonical_entities: getRelevantEntityNames(entities, [chunk]),
     chunk_id: chunk.id,
     chunk_index: chunk.chunk_index,
     end_sec: chunk.end_sec,
@@ -236,7 +266,6 @@ const userPrompt = (chunks: ChunkRow[], relevantEntities: RelevantEntity[]) => {
 
   return JSON.stringify(
     {
-      canonical_entities: relevantEntities,
       chunks: chunkPayload,
     },
     null,
@@ -310,7 +339,7 @@ const getClaudeMaxTokens = (chunks: ChunkRow[]) => {
     return configuredMaxTokens
   }
 
-  const batchWords = chunks.reduce((total, chunk) => total + tokenize(chunk.raw_text).size, 0)
+  const batchWords = chunks.reduce((total, chunk) => total + countWords(chunk.raw_text), 0)
   return Math.max(defaultClaudeMaxTokens, Math.min(16000, batchWords * 3))
 }
 
@@ -361,7 +390,7 @@ const backoffMilliseconds = (attempt: number) => {
 
 const callClaudeOnce = async (
   chunks: ChunkRow[],
-  relevantEntities: RelevantEntity[]
+  entities: EntityNameRow[]
 ): Promise<{
   responseBody: ClaudeMessagesResponse
   responseText: string
@@ -369,6 +398,7 @@ const callClaudeOnce = async (
   retryAfterMs: number | null
 }> => {
   const model = Deno.env.get('ANTHROPIC_MODEL') ?? 'claude-sonnet-4-6'
+
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -380,7 +410,7 @@ const callClaudeOnce = async (
       max_tokens: getClaudeMaxTokens(chunks),
       messages: [
         {
-          content: userPrompt(chunks, relevantEntities),
+          content: userPrompt(chunks, entities),
           role: 'user',
         },
       ],
@@ -403,13 +433,13 @@ const callClaudeOnce = async (
 
 const callClaude = async (
   chunks: ChunkRow[],
-  relevantEntities: RelevantEntity[]
+  entities: EntityNameRow[]
 ): Promise<ClaudeCallResult> => {
   let finalError: Error | null = null
 
   for (let attempt = 0; attempt <= maxClaudeRetries; attempt += 1) {
     try {
-      const response = await callClaudeOnce(chunks, relevantEntities)
+      const response = await callClaudeOnce(chunks, entities)
 
       if (retryableStatuses.has(response.status) && attempt < maxClaudeRetries) {
         await sleep(response.retryAfterMs ?? backoffMilliseconds(attempt))
@@ -425,7 +455,9 @@ const callClaude = async (
       }
 
       const toolInput = extractToolInput(response.responseBody)
-      const rawText = toolInput ? JSON.stringify(toolInput) : extractTextContent(response.responseBody)
+      const rawText = toolInput
+        ? JSON.stringify(toolInput)
+        : extractTextContent(response.responseBody)
       let parsed: BatchExtraction | null = null
       let validationError: string | null = null
 
@@ -459,8 +491,7 @@ const callClaude = async (
       }
     } catch (error) {
       finalError = error instanceof Error ? error : new Error(errorMessage(error))
-      const retryableError =
-        !(error instanceof ProviderHttpError) || error.retryable
+      const retryableError = !(error instanceof ProviderHttpError) || error.retryable
 
       if (retryableError && attempt < maxClaudeRetries) {
         await sleep(backoffMilliseconds(attempt))
@@ -492,8 +523,7 @@ const withItemReviewState = (extraction: z.infer<typeof extractionSchema>) => {
 const createValidationFailedExtraction = (
   chunk: ChunkRow,
   claudeResult: ClaudeCallResult,
-  batchErrorId: string,
-  includeRawResponse: boolean
+  batchErrorId: string
 ) => {
   return {
     chunk_id: chunk.id,
@@ -504,7 +534,7 @@ const createValidationFailedExtraction = (
       entities: [],
       provider: 'anthropic',
       provider_status: claudeResult.providerStatus,
-      raw_response: includeRawResponse ? claudeResult.rawText : null,
+      raw_response: claudeResult.rawText,
       retry_count: claudeResult.retryCount,
       stop_reason: claudeResult.stopReason,
       validation_error: claudeResult.validationError,
@@ -518,11 +548,10 @@ const toExtractionRow = (
   chunk: ChunkRow,
   batchExtraction: BatchExtraction | null,
   claudeResult: ClaudeCallResult,
-  batchErrorId: string,
-  includeRawResponse: boolean
+  batchErrorId: string
 ) => {
   if (!batchExtraction) {
-    return createValidationFailedExtraction(chunk, claudeResult, batchErrorId, includeRawResponse)
+    return createValidationFailedExtraction(chunk, claudeResult, batchErrorId)
   }
 
   const extraction = batchExtraction.chunk_extractions.find((item) => {
@@ -530,7 +559,7 @@ const toExtractionRow = (
   })
 
   if (!extraction) {
-    return createValidationFailedExtraction(chunk, claudeResult, batchErrorId, includeRawResponse)
+    return createValidationFailedExtraction(chunk, claudeResult, batchErrorId)
   }
 
   const itemReviewData = withItemReviewState(extraction)
@@ -599,6 +628,7 @@ Deno.serve(async (request) => {
 
   let sourceId: string | null = null
   let canUpdateSource = false
+  let extractionStageStarted = false
   const supabase = createServiceClient()
 
   try {
@@ -637,6 +667,7 @@ Deno.serve(async (request) => {
     }
 
     await updateSourceStage(supabase, sourceId, 'extracting')
+    extractionStageStarted = true
 
     const entities = await fetchActiveEntities(supabase)
 
@@ -644,18 +675,11 @@ Deno.serve(async (request) => {
 
     for (let index = 0; index < chunksWithoutExtractions.length; index += batchSize) {
       const batch = chunksWithoutExtractions.slice(index, index + batchSize)
-      const relevantEntities = getRelevantEntityNames(entities, batch)
       await throttleProviderRequest(supabase)
-      const claudeResult = await callClaude(batch, relevantEntities)
+      const claudeResult = await callClaude(batch, entities)
       const batchErrorId = crypto.randomUUID()
       const extractionRows = batch.map((chunk) =>
-        toExtractionRow(
-          chunk,
-          claudeResult.parsed,
-          claudeResult,
-          batchErrorId,
-          chunk.id === batch[0]?.id
-        )
+        toExtractionRow(chunk, claudeResult.parsed, claudeResult, batchErrorId)
       )
 
       const { error: insertError } = await supabase.from('extractions').upsert(extractionRows, {
@@ -682,7 +706,7 @@ Deno.serve(async (request) => {
       source_id: sourceId,
     })
   } catch (error) {
-    if (sourceId && canUpdateSource) {
+    if (sourceId && canUpdateSource && extractionStageStarted) {
       await failSourceStage(supabase, sourceId, 'extracting_failed', error).catch(() => undefined)
     }
 

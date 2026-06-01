@@ -27,6 +27,7 @@ import {
   rerunSourcePipelineStage,
   restoreAdminSource,
   subscribeToSourceUpdates,
+  updateAdminSourceStatus,
 } from '@/lib/api/admin'
 import { cn } from '@/lib/utils'
 
@@ -102,6 +103,22 @@ export default function AdminSourceDetailPage() {
     },
   })
 
+  const statusMutation = useMutation({
+    mutationFn: (status: NonNullable<typeof source>['status']) => {
+      if (!source) {
+        throw new Error('Source is not loaded yet.')
+      }
+
+      return updateAdminSourceStatus(source.id, status)
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: sourceQueryKey })
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'source-list'] })
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'entities'] })
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'content-stats'] })
+    },
+  })
+
   useEffect(() => {
     if (!id) {
       return undefined
@@ -119,7 +136,8 @@ export default function AdminSourceDetailPage() {
     ? (failedStageMap[source.pipeline_stage] ?? source.pipeline_stage)
     : null
   const activeStageIndex = currentStage ? pipelineOrder.indexOf(currentStage) : -1
-  const actionError = archiveMutation.error ?? rerunMutation.error ?? restoreMutation.error
+  const actionError =
+    archiveMutation.error ?? rerunMutation.error ?? restoreMutation.error ?? statusMutation.error
   const rerunAction = source ? getPipelineRerunAction(source.pipeline_stage, source) : null
 
   const visibleRouteWarning =
@@ -287,9 +305,7 @@ export default function AdminSourceDetailPage() {
               <div className="mt-4 space-y-3">
                 <Button
                   className="w-full"
-                  disabled={
-                    rerunMutation.isPending || Boolean(rerunAction?.disabledReason)
-                  }
+                  disabled={rerunMutation.isPending || Boolean(rerunAction?.disabledReason)}
                   title={rerunAction?.disabledReason ?? undefined}
                   type="button"
                   variant="outline"
@@ -313,16 +329,29 @@ export default function AdminSourceDetailPage() {
                     Restore source
                   </Button>
                 ) : (
-                  <Button
-                    className="w-full"
-                    disabled={archiveMutation.isPending}
-                    type="button"
-                    variant="outline"
-                    onClick={() => setArchiveDialogOpen(true)}
-                  >
-                    <Archive aria-hidden="true" className="h-4 w-4" />
-                    Archive source
-                  </Button>
+                  <>
+                    <Button
+                      className="w-full"
+                      disabled={statusMutation.isPending}
+                      type="button"
+                      variant={source.status === 'published' ? 'outline' : 'default'}
+                      onClick={() =>
+                        statusMutation.mutate(source.status === 'published' ? 'draft' : 'published')
+                      }
+                    >
+                      {source.status === 'published' ? 'Set source draft' : 'Publish source'}
+                    </Button>
+                    <Button
+                      className="w-full"
+                      disabled={archiveMutation.isPending}
+                      type="button"
+                      variant="outline"
+                      onClick={() => setArchiveDialogOpen(true)}
+                    >
+                      <Archive aria-hidden="true" className="h-4 w-4" />
+                      Archive source
+                    </Button>
+                  </>
                 )}
                 {source.pipeline_stage === 'review' ? (
                   <Button asChild className="w-full">

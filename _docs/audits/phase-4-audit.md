@@ -4,13 +4,13 @@ This audit reviews the current Phase 4 implementation against `_docs/phases/phas
 
 ## Completion Summary
 
-| Area | Status | Notes |
-| --- | --- | --- |
-| Supabase FTS + fuzzy search | Mostly complete | SQL functions exist, but JSON aggregation should explicitly preserve relevance order. |
-| Nav bar live search | Complete with cleanup | Functional. Shared cleanup can reduce duplication. |
-| Full search results page | Mostly complete | Functional, but should forward TanStack Query cancellation signal. |
-| Graph search integration | Needs fixes | Entity selection can silently fail when a result is not loaded in the current graph. Graph search also fetches more data than it needs. |
-| Search index maintenance | Partial | Generated `fts` columns do the real indexing work, but `refresh_search_indexes` currently reports success even if its defensive check finds bad rows. |
+| Area                        | Status                | Notes                                                                                                                                                 |
+| --------------------------- | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Supabase FTS + fuzzy search | Mostly complete       | SQL functions exist, but JSON aggregation should explicitly preserve relevance order.                                                                 |
+| Nav bar live search         | Complete with cleanup | Functional. Shared cleanup can reduce duplication.                                                                                                    |
+| Full search results page    | Mostly complete       | Functional, but should forward TanStack Query cancellation signal.                                                                                    |
+| Graph search integration    | Needs fixes           | Entity selection can silently fail when a result is not loaded in the current graph. Graph search also fetches more data than it needs.               |
+| Search index maintenance    | Partial               | Generated `fts` columns do the real indexing work, but `refresh_search_indexes` currently reports success even if its defensive check finds bad rows. |
 
 ## Critical Issues
 

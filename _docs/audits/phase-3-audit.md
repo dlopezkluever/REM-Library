@@ -8,13 +8,13 @@
 
 ## Summary
 
-| Feature | Completion | Severity |
-|---------|-----------:|----------|
-| 1. Encyclopedia Browse | 95% | Medium |
-| 2. Entity Detail | 90% | Low |
-| 3. Claim Detail | 85% | Low |
-| 4. Source Library | 90% | Medium |
-| 5. Source Detail + Transcript | 90% | High |
+| Feature                       | Completion | Severity |
+| ----------------------------- | ---------: | -------- |
+| 1. Encyclopedia Browse        |        95% | Medium   |
+| 2. Entity Detail              |        90% | Low      |
+| 3. Claim Detail               |        85% | Low      |
+| 4. Source Library             |        90% | Medium   |
+| 5. Source Detail + Transcript |        90% | High     |
 
 **Audit correction:** The implementation is broadly functional, but the original audit overstated Source Library compliance and understated several schema/data-contract gaps. The highest-priority issues are video playback, real author display, Shadcn component compliance, and missing schema support for stored source descriptions and confidence metadata.
 
@@ -89,7 +89,9 @@ Both pages display `"Attributed researcher"` as hardcoded text. The spec require
 **Fix:** Add an API helper that fetches claims with author profile display data, or add a public author display view/denormalized claim author field if profile RLS should remain private.
 
 ```tsx
-{claim.author?.display_name ?? 'Unknown researcher'}
+{
+  claim.author?.display_name ?? 'Unknown researcher'
+}
 ```
 
 ---

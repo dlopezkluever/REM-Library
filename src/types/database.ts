@@ -159,6 +159,44 @@ export type Database = {
           },
         ]
       }
+      admin_audit_events: {
+        Row: {
+          action: string
+          actor_id: string | null
+          created_at: string
+          details: Json
+          id: string
+          target_id: string | null
+          target_table: string
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          created_at?: string
+          details?: Json
+          id?: string
+          target_id?: string | null
+          target_table: string
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          created_at?: string
+          details?: Json
+          id?: string
+          target_id?: string | null
+          target_table?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'admin_audit_events_actor_id_fkey'
+            columns: ['actor_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       entities: {
         Row: {
           aliases: string[]
@@ -209,6 +247,49 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      entity_source_anchors: {
+        Row: {
+          anchor_id: string
+          created_at: string
+          entity_id: string
+          extraction_id: string | null
+        }
+        Insert: {
+          anchor_id: string
+          created_at?: string
+          entity_id: string
+          extraction_id?: string | null
+        }
+        Update: {
+          anchor_id?: string
+          created_at?: string
+          entity_id?: string
+          extraction_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'entity_source_anchors_anchor_id_fkey'
+            columns: ['anchor_id']
+            isOneToOne: false
+            referencedRelation: 'source_anchors'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'entity_source_anchors_entity_id_fkey'
+            columns: ['entity_id']
+            isOneToOne: false
+            referencedRelation: 'entities'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'entity_source_anchors_extraction_id_fkey'
+            columns: ['extraction_id']
+            isOneToOne: false
+            referencedRelation: 'extractions'
+            referencedColumns: ['id']
+          },
+        ]
       }
       extractions: {
         Row: {
@@ -460,7 +541,53 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_admin_claims_page: {
+        Args: {
+          page_limit?: number
+          page_offset?: number
+          search_query?: string | null
+          status_filter?: Database['public']['Enums']['content_status'] | null
+        }
+        Returns: {
+          author_id: string | null
+          confidence_override: number | null
+          confidence_score: number
+          created_at: string
+          detailed_argument: string | null
+          entity_names: string[]
+          evidence_count: number
+          id: string
+          statement: string
+          status: Database['public']['Enums']['content_status']
+          total_count: number
+          updated_at: string
+        }[]
+      }
       get_admin_content_stats: { Args: never; Returns: Json }
+      get_admin_entities_page: {
+        Args: {
+          page_limit?: number
+          page_offset?: number
+          search_query?: string | null
+          status_filter?: Database['public']['Enums']['content_status'] | null
+        }
+        Returns: {
+          aliases: string[]
+          confidence_override: number | null
+          confidence_score: number
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+          position_x: number | null
+          position_y: number | null
+          slug: string
+          status: Database['public']['Enums']['content_status']
+          total_count: number
+          type: Database['public']['Enums']['entity_type']
+          updated_at: string
+        }[]
+      }
       get_admin_source_list_rows: {
         Args: { page_limit?: number; page_offset?: number }
         Returns: {
@@ -486,8 +613,24 @@ export type Database = {
           url: string | null
         }[]
       }
+      get_pending_review_source_summaries: {
+        Args: { page_limit?: number; page_offset?: number }
+        Returns: {
+          oldest_extraction_at: string
+          pending_extraction_count: number
+          pending_item_count: number
+          source_format: Database['public']['Enums']['source_format']
+          source_id: string
+          source_status: Database['public']['Enums']['content_status']
+          source_tier: Database['public']['Enums']['source_tier']
+          source_title: string
+          validation_failed_count: number
+        }[]
+      }
       has_internal_access: { Args: never; Returns: boolean }
       is_admin: { Args: never; Returns: boolean }
+      publish_claims: { Args: { claim_ids: string[] }; Returns: string[] }
+      publish_sources: { Args: { source_ids: string[] }; Returns: string[] }
       refresh_search_indexes: {
         Args: never
         Returns: {
@@ -495,6 +638,20 @@ export type Database = {
           missingEntityFts: number
           ok: boolean
         }
+      }
+      reject_failed_extraction: { Args: { extraction_id: string }; Returns: Json }
+      review_extraction_item: {
+        Args: {
+          action: string
+          claim_input?: Json | null
+          entity_input?: Json | null
+          extraction_id: string
+          item_id: string
+          item_kind: string
+          split_input?: Json | null
+          target_entity_id?: string | null
+        }
+        Returns: Json
       }
       search_entities: {
         Args: { search_query: string }
@@ -512,6 +669,20 @@ export type Database = {
       search_global: { Args: { search_query: string }; Returns: Json }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { '': string }; Returns: string[] }
+      update_claim_status: {
+        Args: {
+          claim_id: string
+          next_status: Database['public']['Enums']['content_status']
+        }
+        Returns: string[]
+      }
+      update_source_status: {
+        Args: {
+          next_status: Database['public']['Enums']['content_status']
+          source_id: string
+        }
+        Returns: string[]
+      }
     }
     Enums: {
       admin_role: 'super_admin' | 'editor' | 'viewer'

@@ -112,9 +112,7 @@ describe('admin API helpers', () => {
   })
 
   it('maps pipeline reruns to the safe backend function', () => {
-    expect(getPipelineRerunAction('transcribing_failed').functionName).toBe(
-      'trigger-transcription'
-    )
+    expect(getPipelineRerunAction('transcribing_failed').functionName).toBe('trigger-transcription')
     expect(getPipelineRerunAction('extracting_failed').functionName).toBe('trigger-extraction')
     expect(
       getPipelineRerunAction('chunking_failed', {
@@ -228,5 +226,104 @@ describe('admin dashboard migration', () => {
     expect(migration).toContain('speaker_turns jsonb')
     expect(migration).toContain('extractions_chunk_id_unique')
     expect(migration).toContain('claim_provider_request_slot')
+  })
+
+  it('adds transactional review queue hardening primitives', () => {
+    const migration = readFileSync(
+      join(process.cwd(), 'supabase/migrations/20260531130000_review_queue_hardening.sql'),
+      'utf8'
+    )
+
+    expect(migration).toContain('create table if not exists public.entity_source_anchors')
+    expect(migration).toContain('create table if not exists public.admin_audit_events')
+    expect(migration).toContain('create or replace function public.review_extraction_item')
+    expect(migration).toContain('for update')
+    expect(migration).toContain('public.review_extraction_terminal_status')
+    expect(migration).toContain('public.get_pending_review_source_summaries')
+    expect(migration).toContain('public.get_admin_entities_page')
+    expect(migration).toContain('public.get_admin_claims_page')
+  })
+
+  it('gates public relationships on published backing claims', () => {
+    const migration = readFileSync(
+      join(process.cwd(), 'supabase/migrations/20260531130000_review_queue_hardening.sql'),
+      'utf8'
+    )
+
+    expect(migration).toContain('claims.id = any(relationships.claim_ids)')
+    expect(migration).toContain("claims.status = 'published'")
+  })
+
+  it('keeps all validation-failed batch rows debuggable', () => {
+    const extractionFunction = readFileSync(
+      join(process.cwd(), 'supabase/functions/trigger-extraction/index.ts'),
+      'utf8'
+    )
+
+    expect(extractionFunction).toContain('raw_response: claudeResult.rawText')
+    expect(extractionFunction).not.toContain('includeRawResponse')
+    expect(extractionFunction).toContain('countWords(chunk.raw_text)')
+  })
+
+  it('uses direct entity evidence and safe relationship lookups for confidence', () => {
+    const confidenceFunction = readFileSync(
+      join(process.cwd(), 'supabase/functions/compute-confidence/index.ts'),
+      'utf8'
+    )
+
+    expect(confidenceFunction).toContain("from('entity_source_anchors')")
+    expect(confidenceFunction).toContain('uuidPattern')
+    expect(confidenceFunction).toContain(".in('from_entity_id', entityIds)")
+    expect(confidenceFunction).toContain(".in('to_entity_id', entityIds)")
+    expect(confidenceFunction).not.toContain('.or(`from_entity_id.in.')
+  })
+
+  it('review_extraction_item raises on invalid action to prevent partial writes', () => {
+    const migration = readFileSync(
+      join(process.cwd(), 'supabase/migrations/20260531130000_review_queue_hardening.sql'),
+      'utf8'
+    )
+
+    // Validate that unsupported actions produce an immediate raise rather than a silent no-op
+    expect(migration).toMatch(/raise exception.*unsupported.*action/i)
+    // Validate the row lock prevents concurrent review of the same item
+    expect(migration).toContain('for update')
+    // Validate the terminal-status guard prevents re-reviewing already-decided items
+    expect(migration).toContain('review_extraction_terminal_status')
+  })
+
+  it('review_extraction_item enforces non-empty entity names server-side', () => {
+    const migration = readFileSync(
+      join(process.cwd(), 'supabase/migrations/20260531130000_review_queue_hardening.sql'),
+      'utf8'
+    )
+
+    // The normalize_review_text function is used for entity names so empty strings are caught
+    expect(migration).toContain('normalize_review_text')
+    // nullif converts empty strings to NULL, which the NOT NULL constraint then rejects
+    expect(migration).toMatch(/nullif\s*\(.*normalize_review_text/i)
+  })
+
+  it('confidence scoring uses both relationship endpoints for weight calculation', () => {
+    const confidenceFunction = readFileSync(
+      join(process.cwd(), 'supabase/functions/compute-confidence/index.ts'),
+      'utf8'
+    )
+
+    // Both endpoints must be resolved before computing an edge weight
+    expect(confidenceFunction).toContain('fromScore')
+    expect(confidenceFunction).toContain('toScore')
+    // Scores are averaged, not taken from a single side
+    expect(confidenceFunction).toMatch(/fromScore.*toScore|toScore.*fromScore/)
+  })
+
+  it('confidence scoring validates entity IDs before use', () => {
+    const confidenceFunction = readFileSync(
+      join(process.cwd(), 'supabase/functions/compute-confidence/index.ts'),
+      'utf8'
+    )
+
+    expect(confidenceFunction).toContain('uuidPattern')
+    expect(confidenceFunction).toMatch(/uuidPattern\.test/)
   })
 })

@@ -33,6 +33,7 @@ import {
   getAdminSourceListRows,
   rerunSourcePipelineStage,
   restoreAdminSource,
+  updateAdminSourceStatus,
   type AdminSourceRow,
 } from '@/lib/api/admin'
 import { cn } from '@/lib/utils'
@@ -80,8 +81,25 @@ export default function AdminSourceListPage() {
     },
   })
 
+  const statusMutation = useMutation({
+    mutationFn: ({
+      source,
+      status,
+    }: {
+      source: AdminSourceRow
+      status: AdminSourceRow['status']
+    }) => updateAdminSourceStatus(source.id, status),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: adminSourceListQueryKey })
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'sources'] })
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'entities'] })
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'content-stats'] })
+    },
+  })
+
   const rows = sourceListQuery.data ?? []
-  const actionError = archiveMutation.error ?? rerunMutation.error ?? restoreMutation.error
+  const actionError =
+    archiveMutation.error ?? rerunMutation.error ?? restoreMutation.error ?? statusMutation.error
 
   return (
     <div className="space-y-6">
@@ -151,7 +169,10 @@ export default function AdminSourceListPage() {
                 rerunMutation.isPending && rerunMutation.variables?.id === source.id
               const restoreInFlight =
                 restoreMutation.isPending && restoreMutation.variables === source.id
+              const statusInFlight =
+                statusMutation.isPending && statusMutation.variables?.source.id === source.id
               const isArchived = source.status === 'archived'
+              const isPublished = source.status === 'published'
               const rerunAction = getPipelineRerunAction(source.pipeline_stage, source)
 
               return (
@@ -234,16 +255,32 @@ export default function AdminSourceListPage() {
                           Restore
                         </Button>
                       ) : (
-                        <Button
-                          disabled={archiveInFlight}
-                          size="sm"
-                          type="button"
-                          variant="outline"
-                          onClick={() => setSourcePendingArchive(source)}
-                        >
-                          <Archive aria-hidden="true" className="h-3 w-3" />
-                          Archive
-                        </Button>
+                        <>
+                          <Button
+                            disabled={statusInFlight}
+                            size="sm"
+                            type="button"
+                            variant={isPublished ? 'outline' : 'default'}
+                            onClick={() =>
+                              statusMutation.mutate({
+                                source,
+                                status: isPublished ? 'draft' : 'published',
+                              })
+                            }
+                          >
+                            {isPublished ? 'Set draft' : 'Publish'}
+                          </Button>
+                          <Button
+                            disabled={archiveInFlight}
+                            size="sm"
+                            type="button"
+                            variant="outline"
+                            onClick={() => setSourcePendingArchive(source)}
+                          >
+                            <Archive aria-hidden="true" className="h-3 w-3" />
+                            Archive
+                          </Button>
+                        </>
                       )}
                     </div>
                   </TableCell>
