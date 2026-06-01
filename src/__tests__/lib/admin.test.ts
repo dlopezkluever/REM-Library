@@ -254,6 +254,17 @@ describe('admin dashboard migration', () => {
     expect(migration).toContain("claims.status = 'published'")
   })
 
+  it('gates public exploration reads on published parent rows', () => {
+    const migration = readFileSync(
+      join(process.cwd(), 'supabase/migrations/20260601010000_exploration_publication_state.sql'),
+      'utf8'
+    )
+
+    expect(migration).toContain('status public.content_status not null default')
+    expect(migration).toContain("status = 'published'")
+    expect(migration).toContain('explorations.id = exploration_steps.exploration_id')
+  })
+
   it('keeps all validation-failed batch rows debuggable', () => {
     const extractionFunction = readFileSync(
       join(process.cwd(), 'supabase/functions/trigger-extraction/index.ts'),
