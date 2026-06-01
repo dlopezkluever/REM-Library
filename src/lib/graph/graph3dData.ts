@@ -29,6 +29,7 @@ export interface Graph3DLink {
 export interface Graph3DData {
   nodes: Graph3DNode[]
   links: Graph3DLink[]
+  visibleNodeIdsBeforeCap: Set<string>
   visibleNodeCount: number
   capped: boolean
 }
@@ -78,6 +79,7 @@ export const buildGraph3DData = (
         .slice(0, nodeCap)
     : visible
 
+  const visibleNodeIdsBeforeCap = new Set(visible.map((candidate) => candidate.id))
   const selectedIds = new Set(selected.map((candidate) => candidate.id))
 
   const nodes: Graph3DNode[] = selected.map((candidate) => ({
@@ -103,7 +105,34 @@ export const buildGraph3DData = (
     })
   })
 
-  return { capped, links, nodes, visibleNodeCount }
+  return { capped, links, nodes, visibleNodeCount, visibleNodeIdsBeforeCap }
+}
+
+export const getRetainedGraph3DNodeId = (
+  nodeId: string | null,
+  renderedNodeIds: ReadonlySet<string>
+): string | null => {
+  if (!nodeId || renderedNodeIds.has(nodeId)) {
+    return nodeId
+  }
+
+  return null
+}
+
+export const getGraph3DFocusBlockReason = (
+  nodeId: string,
+  graph: MythographGraph,
+  data: Graph3DData
+): 'hidden' | 'missing' | 'capped' | null => {
+  if (!graph.hasNode(nodeId)) {
+    return 'missing'
+  }
+
+  if (data.nodes.some((node) => node.id === nodeId)) {
+    return null
+  }
+
+  return data.visibleNodeIdsBeforeCap.has(nodeId) ? 'capped' : 'hidden'
 }
 
 export const buildNeighborMap = (links: Graph3DLink[]): Map<string, Set<string>> => {
