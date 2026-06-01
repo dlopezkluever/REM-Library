@@ -34,12 +34,13 @@ export const formatAnchorLocator = (anchor: SourceAnchorRow): string | null => {
   return null
 }
 
-const formatYear = (date: string | null): string | null => {
+const formatPublicationDate = (date: string | null): string | null => {
   if (!date) {
     return null
   }
-  const year = date.slice(0, 4)
-  return /^\d{4}$/.test(year) ? year : null
+
+  const trimmed = date.trim()
+  return /^\d{4}(-\d{2})?(-\d{2})?$/.test(trimmed) ? trimmed : null
 }
 
 const formatAuthorChicago = (authors: string[]): string | null => {
@@ -74,9 +75,9 @@ export const formatChicagoCitation = ({ anchor, source }: CitationInput): string
   segments.push(`"${source.title}."`)
 
   let formatDate = FORMAT_LABELS[source.format]
-  const year = formatYear(source.publication_date)
-  if (year) {
-    formatDate += `, ${year}`
+  const publicationDate = formatPublicationDate(source.publication_date)
+  if (publicationDate) {
+    formatDate += `, ${publicationDate}`
   }
   segments.push(`${formatDate}.`)
 
