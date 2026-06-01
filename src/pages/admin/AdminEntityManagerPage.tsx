@@ -33,6 +33,7 @@ import {
   type ContentStatus,
 } from '@/lib/api/admin'
 import { TIMELINE_ERAS } from '@/lib/timeline/eras'
+import { parseTimelineSortYear } from '@/lib/timeline/pinchZoom'
 import { cn } from '@/lib/utils'
 
 const TIMELINE_ENTITY_TYPES = new Set(['narrative', 'figure'])
@@ -107,7 +108,8 @@ export default function AdminEntityManagerPage() {
   const selectedSet = useMemo(() => new Set(selectedEntityIds), [selectedEntityIds])
   const allVisibleSelected =
     entities.length > 0 && entities.every((entity) => selectedSet.has(entity.id))
-  const actionError = toggleStatusMutation.error ?? bulkPublishMutation.error ?? retryConfidenceMutation.error
+  const actionError =
+    toggleStatusMutation.error ?? bulkPublishMutation.error ?? retryConfidenceMutation.error
 
   const toggleSelected = (entityId: string) => {
     setSelectedEntityIds((current) =>
@@ -430,6 +432,7 @@ const TimelineDatesForm = ({
   const [dateSortYear, setDateSortYear] = useState(
     initial.date_sort_year !== null ? String(initial.date_sort_year) : ''
   )
+  const [dateSortYearError, setDateSortYearError] = useState<string | null>(null)
 
   const saveMutation = useMutation({
     mutationFn: (dates: { date_era: string | null; date_sort_year: number | null }) =>
@@ -442,13 +445,18 @@ const TimelineDatesForm = ({
   })
 
   const handleSave = () => {
-    const trimmedYear = dateSortYear.trim()
-    const parsedYear = trimmedYear === '' ? null : Number(trimmedYear)
+    let parsedYear: number | null
+    try {
+      parsedYear = parseTimelineSortYear(dateSortYear)
+    } catch (error) {
+      setDateSortYearError(error instanceof Error ? error.message : 'Sort year is invalid.')
+      return
+    }
 
+    setDateSortYearError(null)
     saveMutation.mutate({
       date_era: dateEra.trim() || null,
-      date_sort_year:
-        parsedYear !== null && Number.isFinite(parsedYear) ? Math.trunc(parsedYear) : null,
+      date_sort_year: parsedYear,
     })
   }
 
@@ -479,9 +487,16 @@ const TimelineDatesForm = ({
           placeholder="-1200"
           type="number"
           value={dateSortYear}
-          onChange={(event) => setDateSortYear(event.target.value)}
+          onChange={(event) => {
+            setDateSortYear(event.target.value)
+            setDateSortYearError(null)
+          }}
         />
       </label>
+
+      {dateSortYearError ? (
+        <p className="font-body text-sm text-terracotta-dark">{dateSortYearError}</p>
+      ) : null}
 
       {saveMutation.isError ? (
         <p className="font-body text-sm text-terracotta-dark">
