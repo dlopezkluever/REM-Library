@@ -10,6 +10,8 @@ import {
   buildGraph3DData,
   buildNeighborMap,
   dimNodeColor,
+  getGraph3DFocusBlockReason,
+  getRetainedGraph3DNodeId,
   GRAPH_3D_NODE_CAP,
   type Graph3DLink,
   type Graph3DNode,
@@ -84,6 +86,15 @@ export const GraphCanvas3D = ({
     return dimNodeColor(node.color)
   }, [])
 
+  const clearHover = useCallback(
+    (instance: ForceGraph3DInstance<Graph3DNode, Graph3DLink> | null = graphRef.current) => {
+      hoveredRef.current = null
+      setHoveredNodeId(null)
+      instance?.nodeColor(colorForNode)
+    },
+    [colorForNode, setHoveredNodeId]
+  )
+
   const focusPendingNode = useCallback(() => {
     const instance = graphRef.current
     const nodeId = pendingFocusRef.current
@@ -141,7 +152,11 @@ export const GraphCanvas3D = ({
         instance.nodeColor(colorForNode)
         container.style.cursor = node ? 'pointer' : 'default'
       })
-      .onBackgroundClick(() => clearInteraction())
+      .onBackgroundClick(() => {
+        clearHover(instance)
+        clearInteraction()
+        instance.nodeColor(colorForNode)
+      })
       .onEngineStop(() => focusPendingNode())
 
     const syncSize = () => {
@@ -157,7 +172,14 @@ export const GraphCanvas3D = ({
       instance._destructor()
       graphRef.current = null
     }
-  }, [clearInteraction, colorForNode, focusPendingNode, setActiveNodeId, setHoveredNodeId])
+  }, [
+    clearHover,
+    clearInteraction,
+    colorForNode,
+    focusPendingNode,
+    setActiveNodeId,
+    setHoveredNodeId,
+  ])
 
   useEffect(() => {
     const instance = graphRef.current
@@ -167,26 +189,47 @@ export const GraphCanvas3D = ({
     }
 
     nodeByIdRef.current = new Map(graphData.nodes.map((node) => [node.id, node]))
+    const renderedNodeIds = new Set(nodeByIdRef.current.keys())
     neighborsRef.current = buildNeighborMap(graphData.links)
+
+    if (
+      hoveredRef.current &&
+      getRetainedGraph3DNodeId(hoveredRef.current, renderedNodeIds) === null
+    ) {
+      clearHover(instance)
+    }
+
+    const currentActiveNodeId = useGraphStore.getState().activeNodeId
+    if (
+      currentActiveNodeId &&
+      getRetainedGraph3DNodeId(currentActiveNodeId, renderedNodeIds) === null
+    ) {
+      setActiveNodeId(null)
+    }
+
+    if (
+      pendingFocusRef.current &&
+      getRetainedGraph3DNodeId(pendingFocusRef.current, renderedNodeIds) === null
+    ) {
+      pendingFocusRef.current = null
+    }
+
     instance.graphData({ links: graphData.links, nodes: graphData.nodes })
-  }, [graphData])
+    instance.nodeColor(colorForNode)
+  }, [clearHover, colorForNode, graphData, setActiveNodeId])
 
   useEffect(() => {
     graphRef.current?.nodeColor(colorForNode)
   }, [activeNodeId, colorForNode])
 
   useEffect(() => {
-    if (!focusedNodeId || !graph || !graphRef.current) {
+    if (!focusedNodeId || !graph || !graphData || !graphRef.current) {
       return
     }
 
-    if (!graph.hasNode(focusedNodeId)) {
-      onFocusBlocked(focusedNodeId, 'missing')
-      return
-    }
-
-    if (!nodeByIdRef.current.has(focusedNodeId)) {
-      onFocusBlocked(focusedNodeId, 'hidden')
+    const blockReason = getGraph3DFocusBlockReason(focusedNodeId, graph, graphData)
+    if (blockReason) {
+      onFocusBlocked(focusedNodeId, blockReason)
       return
     }
 
@@ -232,8 +275,8 @@ export const GraphCanvas3D = ({
 
       {graphData?.capped ? (
         <div className="pointer-events-none absolute bottom-5 left-1/2 z-20 w-[min(calc(100vw-2rem),440px)] -translate-x-1/2 rounded border-0.5 border-white/10 bg-charcoal/90 px-4 py-3 text-center font-body text-[12px] text-white/70 backdrop-blur-md">
-          3D view shows the top {GRAPH_3D_NODE_CAP.toLocaleString()} nodes by confidence. Use filters
-          to explore a subset.
+          3D view shows the top {GRAPH_3D_NODE_CAP.toLocaleString()} nodes by confidence. Use
+          filters to explore a subset.
         </div>
       ) : null}
     </div>

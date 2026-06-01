@@ -30,7 +30,7 @@ interface GraphCanvasProps {
   highlightNodeIds?: readonly string[] | null
 }
 
-export type GraphFocusBlockReason = 'hidden' | 'missing'
+export type GraphFocusBlockReason = 'hidden' | 'missing' | 'capped'
 
 const applyFiltersToGraph = (graph: MythographGraph, bypassFilters: boolean) => {
   if (bypassFilters) {
