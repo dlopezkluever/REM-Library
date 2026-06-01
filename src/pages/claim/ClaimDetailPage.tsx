@@ -6,6 +6,9 @@ import { MarkdownProse } from '@/components/content/MarkdownProse'
 import { ConfidenceBadge } from '@/components/entity/ConfidenceBadge'
 import { EntityChip } from '@/components/entity/EntityChip'
 import { Skeleton } from '@/components/ui/skeleton'
+import { ExportDialog } from '@/components/export/ExportDialog'
+import { CopyLinkButton } from '@/components/common/CopyLinkButton'
+import { buildClaimExport } from '@/lib/export'
 import { getClaimById, getEntitiesForClaim } from '@/lib/api/claims'
 import { getSourceEvidenceForClaim } from '@/lib/api/sources'
 import { formatAnchorCitation, formatTimestamp } from '@/lib/format'
@@ -102,6 +105,25 @@ export default function ClaimDetailPage() {
             {claim.profiles?.display_name ?? 'Unknown researcher'} &middot;{' '}
             {new Date(claim.created_at).toLocaleDateString()}
           </p>
+          <div className="mt-5 flex flex-wrap items-center gap-2">
+            <ExportDialog
+              title="Export claim"
+              buildExport={(options) =>
+                buildClaimExport(
+                  {
+                    claim,
+                    entities: (entitiesQuery.data ?? []).map((entity) => ({
+                      name: entity.name,
+                      type: entity.type,
+                    })),
+                    evidence,
+                  },
+                  options
+                )
+              }
+            />
+            <CopyLinkButton />
+          </div>
         </header>
 
         <section className="py-7">
