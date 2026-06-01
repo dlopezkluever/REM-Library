@@ -9,6 +9,7 @@ export const ROUTES = {
   EXPLORATIONS: '/explorations',
   EXPLORATION_PLAYER: '/explorations/:id',
   TIMELINE: '/timeline',
+  COMPARE: '/compare',
   ADMIN_LOGIN: '/admin/login',
   ADMIN_DASHBOARD: '/admin/dashboard',
   ADMIN_SOURCES: '/admin/sources',
