@@ -203,6 +203,8 @@ export type Database = {
           confidence_override: number | null
           confidence_score: number
           created_at: string
+          date_era: string | null
+          date_sort_year: number | null
           description: string | null
           fts: unknown
           id: string
@@ -219,6 +221,8 @@ export type Database = {
           confidence_override?: number | null
           confidence_score?: number
           created_at?: string
+          date_era?: string | null
+          date_sort_year?: number | null
           description?: string | null
           fts?: unknown
           id?: string
@@ -235,6 +239,8 @@ export type Database = {
           confidence_override?: number | null
           confidence_score?: number
           created_at?: string
+          date_era?: string | null
+          date_sort_year?: number | null
           description?: string | null
           fts?: unknown
           id?: string
@@ -247,6 +253,86 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      exploration_steps: {
+        Row: {
+          created_at: string
+          entity_id: string | null
+          exploration_id: string
+          focus_entity_ids: string[]
+          id: string
+          prose_text: string
+          step_index: number
+        }
+        Insert: {
+          created_at?: string
+          entity_id?: string | null
+          exploration_id: string
+          focus_entity_ids?: string[]
+          id?: string
+          prose_text?: string
+          step_index: number
+        }
+        Update: {
+          created_at?: string
+          entity_id?: string | null
+          exploration_id?: string
+          focus_entity_ids?: string[]
+          id?: string
+          prose_text?: string
+          step_index?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'exploration_steps_entity_id_fkey'
+            columns: ['entity_id']
+            isOneToOne: false
+            referencedRelation: 'entities'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'exploration_steps_exploration_id_fkey'
+            columns: ['exploration_id']
+            isOneToOne: false
+            referencedRelation: 'explorations'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      explorations: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'explorations_created_by_fkey'
+            columns: ['created_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+        ]
       }
       entity_source_anchors: {
         Row: {

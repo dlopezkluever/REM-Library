@@ -1,11 +1,18 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { FeaturedConnections } from '@/components/graph/FeaturedConnections'
 import { GraphCanvas, type GraphFocusBlockReason } from '@/components/graph/GraphCanvas'
 import { GraphFilters } from '@/components/graph/GraphFilters'
 import { GraphSearchBar } from '@/components/graph/GraphSearchBar'
 import { GraphSidePanel } from '@/components/graph/GraphSidePanel'
+import { cn } from '@/lib/utils'
 import { useGraphStore } from '@/stores/graphStore'
 import type { EntitySearchResult } from '@/types/domain'
+
+const GraphCanvas3D = lazy(() =>
+  import('@/components/graph/GraphCanvas3D').then((module) => ({ default: module.GraphCanvas3D }))
+)
+
+type GraphViewMode = '2d' | '3d'
 
 interface PendingFocus {
   id: string
@@ -18,6 +25,7 @@ interface BlockedFocus extends PendingFocus {
 
 export default function GraphPage() {
   const searchInputRef = useRef<HTMLInputElement | null>(null)
+  const [viewMode, setViewMode] = useState<GraphViewMode>('2d')
   const [pendingFocus, setPendingFocus] = useState<PendingFocus | null>(null)
   const [blockedFocus, setBlockedFocus] = useState<BlockedFocus | null>(null)
   const setActiveNodeId = useGraphStore((state) => state.setActiveNodeId)
@@ -98,16 +106,70 @@ export default function GraphPage() {
 
   const dismissBlockedFocus = () => setBlockedFocus(null)
 
+  const handleViewModeChange = useCallback(
+    (mode: GraphViewMode) => {
+      if (mode === viewMode) {
+        return
+      }
+
+      const activeNodeId = useGraphStore.getState().activeNodeId
+      setBlockedFocus(null)
+
+      if (activeNodeId) {
+        setPendingFocus({ id: activeNodeId, name: 'This entity' })
+      }
+
+      setViewMode(mode)
+    },
+    [viewMode]
+  )
+
+  const canvasProps = {
+    focusedNodeId: pendingFocus?.id ?? null,
+    onFocusBlocked: handleFocusBlocked,
+    onFocusedNodeSettled: handleFocusedNodeSettled,
+  }
+
   return (
     <div className="relative h-full">
-      <GraphCanvas
-        focusedNodeId={pendingFocus?.id ?? null}
-        onFocusBlocked={handleFocusBlocked}
-        onFocusedNodeSettled={handleFocusedNodeSettled}
-      />
+      {viewMode === '2d' ? (
+        <GraphCanvas {...canvasProps} />
+      ) : (
+        <Suspense
+          fallback={
+            <div className="flex h-full items-center justify-center bg-canvas">
+              <p className="font-display text-[10px] uppercase tracking-label text-white/45">
+                Loading 3D graph
+              </p>
+            </div>
+          }
+        >
+          <GraphCanvas3D {...canvasProps} />
+        </Suspense>
+      )}
       <div className="pointer-events-none absolute inset-0">
         <GraphSearchBar inputRef={searchInputRef} onSelect={handleSearchSelect} />
         <GraphFilters />
+        <div
+          className="pointer-events-auto absolute right-16 top-4 z-30 flex items-center gap-1 rounded border-0.5 border-white/10 bg-charcoal/80 p-1 backdrop-blur-md"
+          role="group"
+          aria-label="Graph dimension"
+        >
+          {(['2d', '3d'] as const).map((mode) => (
+            <button
+              key={mode}
+              aria-pressed={viewMode === mode}
+              className={cn(
+                'rounded px-2.5 py-1 font-display text-[10px] uppercase tracking-label transition-colors',
+                viewMode === mode ? 'bg-verdigris text-stone' : 'text-white/55 hover:text-white'
+              )}
+              type="button"
+              onClick={() => handleViewModeChange(mode)}
+            >
+              {mode}
+            </button>
+          ))}
+        </div>
         <FeaturedConnections />
       </div>
       {blockedFocus ? (

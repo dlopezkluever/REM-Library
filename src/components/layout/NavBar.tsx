@@ -145,6 +145,20 @@ export const NavBar = ({ variant }: NavBarProps) => {
           Encyclopedia
         </Link>
         <Link
+          to={ROUTES.EXPLORATIONS}
+          className={isActive(ROUTES.EXPLORATIONS) ? activeLinkClass : navLinkClass}
+          onClick={closeSearch}
+        >
+          Explorations
+        </Link>
+        <Link
+          to={ROUTES.TIMELINE}
+          className={isActive(ROUTES.TIMELINE) ? activeLinkClass : navLinkClass}
+          onClick={closeSearch}
+        >
+          Timeline
+        </Link>
+        <Link
           to={ROUTES.SOURCES}
           className={isActive(ROUTES.SOURCES) ? activeLinkClass : navLinkClass}
           onClick={closeSearch}

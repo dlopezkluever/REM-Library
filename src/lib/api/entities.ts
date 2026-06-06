@@ -47,6 +47,25 @@ export const getPublishedCultureEntities = async () => {
   return getPublishedEntities({ type: 'culture' })
 }
 
+// Published Narrative and Figure entities that have been dated by an admin,
+// ordered chronologically for the timeline view.
+export const getTimelineEntities = async (): Promise<EntityRow[]> => {
+  const { data, error } = await supabase
+    .from('entities')
+    .select('*')
+    .eq('status', 'published')
+    .in('type', ['narrative', 'figure'])
+    .not('date_era', 'is', null)
+    .not('date_sort_year', 'is', null)
+    .order('date_sort_year', { ascending: true })
+
+  if (error) {
+    throw error
+  }
+
+  return data
+}
+
 export const getEntityBySlug = async (slug: string) => {
   const { data, error } = await supabase
     .from('entities')

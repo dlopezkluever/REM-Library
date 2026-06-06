@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
 import {
   BarChart3,
   BookOpen,
+  Compass,
   FileText,
   GitPullRequestDraft,
   LogOut,
@@ -20,6 +21,7 @@ const navItems = [
   { to: ROUTES.ADMIN_REVIEW, label: 'Review Queue', icon: GitPullRequestDraft },
   { to: ROUTES.ADMIN_ENTITIES, label: 'Entities', icon: ScrollText },
   { to: ROUTES.ADMIN_CLAIMS, label: 'Claims', icon: FileText },
+  { to: ROUTES.ADMIN_EXPLORATION_NEW, label: 'New Exploration', icon: Compass },
   { to: ROUTES.ADMIN_SETTINGS, label: 'Settings', icon: Settings },
 ]
 

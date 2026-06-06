@@ -8,6 +8,10 @@ import { EntityChip } from '@/components/entity/EntityChip'
 import { MiniGraph } from '@/components/entity/MiniGraph'
 import { SourceAnchorRow } from '@/components/source/SourceAnchorRow'
 import { Skeleton } from '@/components/ui/skeleton'
+import { CompareButton } from '@/components/compare/CompareButton'
+import { ExportDialog } from '@/components/export/ExportDialog'
+import { CopyLinkButton } from '@/components/common/CopyLinkButton'
+import { buildEntityExport } from '@/lib/export'
 import { ENTITY_LABELS } from '@/constants/entityTypes'
 import { getClaimsForEntity } from '@/lib/api/claims'
 import { getEntityBySlug, getEntityNeighborhood } from '@/lib/api/entities'
@@ -107,6 +111,36 @@ export default function EntityDetailPage() {
           ) : null}
           <div className="mt-5">
             <AttestationBar score={confidence} sourceCount={sourceCount} />
+          </div>
+          <div className="mt-5 flex flex-wrap items-center gap-2">
+            <CompareButton slug={entity.slug} />
+            <ExportDialog
+              title="Export entity"
+              buildExport={(options) =>
+                buildEntityExport(
+                  {
+                    entity,
+                    connections: connectedEntities.map((connectedEntity) => {
+                      const relationship = relationships.find(
+                        (item) =>
+                          (item.from_entity_id === entity.id &&
+                            item.to_entity_id === connectedEntity.id) ||
+                          (item.to_entity_id === entity.id &&
+                            item.from_entity_id === connectedEntity.id)
+                      )
+
+                      return {
+                        name: connectedEntity.name,
+                        relationshipType: relationship?.type ?? null,
+                      }
+                    }),
+                    evidence,
+                  },
+                  options
+                )
+              }
+            />
+            <CopyLinkButton />
           </div>
         </header>
 
