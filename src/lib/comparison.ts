@@ -42,6 +42,8 @@ export function buildCompareSearch(slugs: string[]): string {
 }
 
 export function appendCompareSlug(existing: string[], slug: string): string[] {
+  // Comparison history is recency based: clicking an existing slug moves it to
+  // the end, and the oldest column drops when more than four are selected.
   const merged = dedupeStrings([...existing.filter((value) => value !== slug), slug])
   return merged.slice(Math.max(0, merged.length - MAX_COMPARE))
 }

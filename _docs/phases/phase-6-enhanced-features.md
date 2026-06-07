@@ -17,7 +17,7 @@
 3. Add a "3D" / "2D" toggle button to the top-right corner of the graph canvas; toggling replaces the Sigma canvas with the Three.js canvas and vice versa; preserve the active node and camera focus across the toggle.
 4. Wire 3D interactions: `onNodeClick` → open the same `GraphSidePanel` from Phase 2; `onNodeHover` → highlight neighbor nodes using `force-graph-3d`'s `nodeColor` callback; same filter controls from Phase 2 apply (re-filter the node/link arrays before passing to the 3D graph).
 5. Design with the goal that the 3D view should maintain ≥30 FPS at 5,000 nodes on a modern laptop GPU.
- If not possible, implement a node count cap (show the top 2,000 by confidence score in 3D) with a notice: "3D view shows the top 2,000 nodes by confidence. Use filters to explore a subset."
+   If not possible, implement a node count cap (show the top 2,000 by confidence score in 3D) with a notice: "3D view shows the top 2,000 nodes by confidence. Use filters to explore a subset."
 
 ---
 
@@ -59,5 +59,11 @@
 4. Add citation format selection in the export dialog: "Informal (Mythograph citation)" vs. "Chicago-style" (for academic use). Chicago style formats the source metadata as: Author Last, First. "Source Title." Format, Date. Timestamp/Page.
 5. Add a "Copy link" button on every entity, claim, and source page: copies the canonical URL to the clipboard with a brief toast notification "Link copied."
 
-Later testing: 
-1: Test performance target: 3D view should maintain ≥30 FPS at 5,000 nodes on a modern laptop GPU. If not, implement a node count cap (show the top 2,000 by confidence score in 3D) with a notice: "3D view shows the top 2,000 nodes by confidence. Use filters to explore a subset."
+---
+
+## Post-audit implementation clarifications
+
+- 3D/2D toggle preservation means active-node focus is preserved across renderers. General free-pan/free-zoom viewport preservation is not treated as equivalent between Sigma 2D and Three.js 3D cameras.
+- 3D performance is protected by the top 2,000 node cap. Manual benchmark target: verify the capped 3D graph stays usable on a seeded graph with at least 5,000 published nodes, and record FPS/device notes in a revised audit when that seed exists.
+- Timeline zoom supports explicit zoom buttons, desktop trackpad pinch through wheel events, and touch two-pointer pinch on the timeline surface.
+- Guided explorations now use draft/published state. Public list and player routes only return published explorations; draft rows and steps are admin-only.

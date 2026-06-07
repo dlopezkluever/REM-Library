@@ -7,6 +7,8 @@ import {
   buildNeighborMap,
   confidenceToVal,
   dimNodeColor,
+  getGraph3DFocusBlockReason,
+  getRetainedGraph3DNodeId,
   GRAPH_3D_NODE_CAP,
 } from '@/lib/graph/graph3dData'
 import { DEFAULT_GRAPH_FILTERS, type GraphFilterState } from '@/stores/graphStore'
@@ -145,6 +147,7 @@ describe('buildGraph3DData', () => {
 
     expect(data.capped).toBe(true)
     expect(data.visibleNodeCount).toBe(5)
+    expect(data.visibleNodeIdsBeforeCap).toEqual(new Set(['n0', 'n1', 'n2', 'n3', 'n4']))
     expect(data.nodes).toHaveLength(2)
     expect(data.nodes.map((node) => node.id)).toEqual(['n4', 'n3'])
   })
@@ -164,6 +167,32 @@ describe('buildGraph3DData', () => {
 
   it('defaults the cap to 2000 nodes', () => {
     expect(GRAPH_3D_NODE_CAP).toBe(2000)
+  })
+})
+
+describe('getRetainedGraph3DNodeId', () => {
+  it('keeps rendered ids and clears stale ids', () => {
+    const renderedIds = new Set(['a', 'b'])
+
+    expect(getRetainedGraph3DNodeId('a', renderedIds)).toBe('a')
+    expect(getRetainedGraph3DNodeId('c', renderedIds)).toBeNull()
+    expect(getRetainedGraph3DNodeId(null, renderedIds)).toBeNull()
+  })
+})
+
+describe('getGraph3DFocusBlockReason', () => {
+  it('distinguishes missing, hidden, capped, and rendered focus targets', () => {
+    const graph = buildGraph([
+      { confidence: 0.9, id: 'visible', type: 'symbol' },
+      { confidence: 0.8, id: 'capped', type: 'symbol' },
+      { confidence: 0.1, id: 'hidden', type: 'symbol' },
+    ])
+    const data = buildGraph3DData(graph, filtersWith({ confidenceThreshold: 0.5 }), 1)
+
+    expect(getGraph3DFocusBlockReason('visible', graph, data)).toBeNull()
+    expect(getGraph3DFocusBlockReason('capped', graph, data)).toBe('capped')
+    expect(getGraph3DFocusBlockReason('hidden', graph, data)).toBe('hidden')
+    expect(getGraph3DFocusBlockReason('missing', graph, data)).toBe('missing')
   })
 })
 

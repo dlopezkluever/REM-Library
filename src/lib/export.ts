@@ -20,12 +20,14 @@ export interface EntityExportInput {
   entity: EntityRow
   connections: EntityExportConnection[]
   evidence: CitationInput[]
+  canonicalUrl?: string
 }
 
 export interface ClaimExportInput {
   claim: ClaimWithAuthor
   entities: { name: string; type: EntityType }[]
   evidence: CitationInput[]
+  canonicalUrl?: string
 }
 
 interface Formatter {
@@ -56,7 +58,8 @@ const makeFormatter = (format: ExportFormat): Formatter => {
 const relationshipLabel = (type: string | null): string =>
   type ? type.replace(/_/g, ' ') : 'related'
 
-const formatPercent = (value: number): string => `${Math.round(Math.min(Math.max(value, 0), 1) * 100)}%`
+const formatPercent = (value: number): string =>
+  `${Math.round(Math.min(Math.max(value, 0), 1) * 100)}%`
 
 const entityConfidence = (entity: EntityRow): number =>
   entity.confidence_override ?? entity.confidence_score
@@ -65,10 +68,31 @@ const claimConfidence = (claim: ClaimWithAuthor): number =>
   claim.confidence_override ?? claim.confidence_score
 
 const finalize = (lines: string[]): string =>
-  `${lines.join('\n').replace(/\n{3,}/g, '\n\n').trim()}\n`
+  `${lines
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()}\n`
+
+export const dedupeCitationInputs = (evidence: CitationInput[]): CitationInput[] => {
+  const seen = new Set<string>()
+
+  return evidence.filter((item) => {
+    const sourceId = item.source.id ?? item.source.title
+    const anchorId = item.anchor.id ?? formatCitation(item, 'informal')
+    const key = `${sourceId}:${anchorId}`
+
+    if (seen.has(key)) {
+      return false
+    }
+
+    seen.add(key)
+    return true
+  })
+}
 
 export const buildEntityExport = (input: EntityExportInput, options: ExportOptions): string => {
-  const { entity, connections, evidence } = input
+  const { entity, connections } = input
+  const evidence = dedupeCitationInputs(input.evidence)
   const fmt = makeFormatter(options.format)
   const lines: string[] = []
 
@@ -110,7 +134,7 @@ export const buildEntityExport = (input: EntityExportInput, options: ExportOptio
   }
 
   lines.push('')
-  lines.push(`Exported from Mythograph · /entity/${entity.slug}`)
+  lines.push(`Exported from Mythograph · ${input.canonicalUrl ?? `/entity/${entity.slug}`}`)
 
   return finalize(lines)
 }
@@ -163,7 +187,7 @@ export const buildClaimExport = (input: ClaimExportInput, options: ExportOptions
   }
 
   lines.push('')
-  lines.push(`Exported from Mythograph · /claim/${claim.id}`)
+  lines.push(`Exported from Mythograph · ${input.canonicalUrl ?? `/claim/${claim.id}`}`)
 
   return finalize(lines)
 }

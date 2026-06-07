@@ -19,7 +19,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Input } from '@/components/ui/input'
 import { ROUTES } from '@/constants/routes'
 import { useSearch } from '@/hooks/useSearch'
-import { createExploration, type ExplorationStepRow } from '@/lib/api/explorations'
+import {
+  createExploration,
+  type ExplorationPublicationStatus,
+  type ExplorationStepRow,
+} from '@/lib/api/explorations'
 import { cn } from '@/lib/utils'
 import type { EntityType } from '@/types/domain'
 
@@ -43,11 +47,7 @@ const getErrorMessage = (error: unknown) => {
   return 'Exploration could not be saved.'
 }
 
-const EntitySearchPicker = ({
-  onSelect,
-}: {
-  onSelect: (entity: PickedEntity) => void
-}) => {
+const EntitySearchPicker = ({ onSelect }: { onSelect: (entity: PickedEntity) => void }) => {
   const { isLoading, query, results, setQuery } = useSearch()
   const hasQuery = query.trim().length > 0
 
@@ -110,9 +110,11 @@ export default function AdminExplorationEditor() {
 
   const createMutation = useMutation({
     mutationFn: createExploration,
-    onSuccess: async (exploration) => {
+    onSuccess: async (exploration, variables) => {
       await queryClient.invalidateQueries({ queryKey: ['explorations', 'published'] })
-      navigate(`/explorations/${exploration.id}`)
+      navigate(
+        variables.status === 'published' ? `/explorations/${exploration.id}` : ROUTES.EXPLORATIONS
+      )
     },
   })
 
@@ -201,9 +203,7 @@ export default function AdminExplorationEditor() {
     return null
   }
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-
+  const saveExploration = (status: ExplorationPublicationStatus) => {
     const validationError = validate()
     if (validationError) {
       setFormError(validationError)
@@ -214,12 +214,18 @@ export default function AdminExplorationEditor() {
     createMutation.mutate({
       title: title.trim(),
       description: description.trim() || null,
+      status,
       steps: steps.map((step) => ({
         entity_id: step.focus[0]?.id ?? null,
         prose_text: step.prose_text.trim(),
         focus_entity_ids: step.focus.map((focus) => focus.id),
       })),
     })
+  }
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    saveExploration('draft')
   }
 
   const openPreview = () => {
@@ -313,10 +319,7 @@ export default function AdminExplorationEditor() {
             >
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
-                  <GripVertical
-                    aria-hidden="true"
-                    className="h-4 w-4 cursor-grab text-[#bbb]"
-                  />
+                  <GripVertical aria-hidden="true" className="h-4 w-4 cursor-grab text-[#bbb]" />
                   <span className="font-display text-[10px] uppercase tracking-label text-[#777]">
                     Step {index + 1}
                   </span>
@@ -404,8 +407,16 @@ export default function AdminExplorationEditor() {
               <Eye aria-hidden="true" className="h-3.5 w-3.5" />
               Preview
             </Button>
-            <Button disabled={createMutation.isPending} size="sm" type="submit">
-              {createMutation.isPending ? 'Saving…' : 'Save exploration'}
+            <Button disabled={createMutation.isPending} size="sm" type="submit" variant="outline">
+              {createMutation.isPending ? 'Saving...' : 'Save draft'}
+            </Button>
+            <Button
+              disabled={createMutation.isPending}
+              size="sm"
+              type="button"
+              onClick={() => saveExploration('published')}
+            >
+              {createMutation.isPending ? 'Publishing...' : 'Publish'}
             </Button>
           </div>
         </div>
@@ -417,7 +428,9 @@ export default function AdminExplorationEditor() {
             <DialogTitle>Exploration preview</DialogTitle>
           </DialogHeader>
           <div className="h-[70vh] w-full overflow-hidden rounded">
-            {previewOpen ? <ExplorationPlayer steps={previewSteps} title={title || 'Preview'} /> : null}
+            {previewOpen ? (
+              <ExplorationPlayer steps={previewSteps} title={title || 'Preview'} />
+            ) : null}
           </div>
         </DialogContent>
       </Dialog>

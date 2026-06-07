@@ -7,6 +7,7 @@ import {
   TIMELINE_MIN_YEAR,
   yearToX,
 } from '@/lib/timeline/eras'
+import { getPinchZoom, getPointerDistance, parseTimelineSortYear } from '@/lib/timeline/pinchZoom'
 
 describe('computeTimelineDomain', () => {
   it('falls back to the full era span when there are no years', () => {
@@ -58,5 +59,39 @@ describe('eraForYear', () => {
   it('clamps years at or beyond the final era boundary into the modern band', () => {
     expect(eraForYear(TIMELINE_MAX_YEAR)?.key).toBe('modern')
     expect(eraForYear(5000)?.key).toBe('modern')
+  })
+})
+
+describe('timeline pinch and date helpers', () => {
+  it('computes pointer distance and clamps pinch zoom', () => {
+    expect(getPointerDistance({ x: 0, y: 0 }, { x: 3, y: 4 })).toBe(5)
+    expect(
+      getPinchZoom({
+        currentDistance: 200,
+        maxZoom: 4,
+        minZoom: 1,
+        startDistance: 100,
+        startZoom: 1.5,
+      })
+    ).toBe(3)
+    expect(
+      getPinchZoom({
+        currentDistance: 500,
+        maxZoom: 4,
+        minZoom: 1,
+        startDistance: 100,
+        startZoom: 2,
+      })
+    ).toBe(4)
+  })
+
+  it('parses blank years as null and valid BCE years as numbers', () => {
+    expect(parseTimelineSortYear('')).toBeNull()
+    expect(parseTimelineSortYear('  -1200 ')).toBe(-1200)
+  })
+
+  it('rejects invalid and decimal years', () => {
+    expect(() => parseTimelineSortYear('abc')).toThrow('Sort year')
+    expect(() => parseTimelineSortYear('1200.5')).toThrow('Sort year')
   })
 })

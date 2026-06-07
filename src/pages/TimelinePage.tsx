@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ChevronDown, Minus, Plus } from 'lucide-react'
 import { GraphSidePanel } from '@/components/graph/GraphSidePanel'
@@ -16,6 +16,7 @@ import {
   TIMELINE_ERAS,
   yearToX,
 } from '@/lib/timeline/eras'
+import { getPinchZoom, getPointerDistance } from '@/lib/timeline/pinchZoom'
 import { cn } from '@/lib/utils'
 import { useGraphStore } from '@/stores/graphStore'
 
@@ -47,6 +48,9 @@ export default function TimelinePage() {
   const [baseWidth, setBaseWidth] = useState(960)
 
   const scrollRef = useRef<HTMLDivElement | null>(null)
+  const activePointersRef = useRef(new Map<number, { x: number; y: number }>())
+  const pinchRef = useRef<{ distance: number; zoom: number } | null>(null)
+  const activeNodeId = useGraphStore((state) => state.activeNodeId)
   const setActiveNodeId = useGraphStore((state) => state.setActiveNodeId)
 
   const entitiesQuery = useQuery({
@@ -157,6 +161,54 @@ export default function TimelinePage() {
     setActiveNodeId(entity.id)
   }
 
+  const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.pointerType !== 'touch') {
+      return
+    }
+
+    event.currentTarget.setPointerCapture(event.pointerId)
+    activePointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY })
+  }
+
+  const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.pointerType !== 'touch' || !activePointersRef.current.has(event.pointerId)) {
+      return
+    }
+
+    activePointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY })
+    const pointers = Array.from(activePointersRef.current.values())
+
+    if (pointers.length < 2) {
+      pinchRef.current = null
+      return
+    }
+
+    event.preventDefault()
+    const distance = getPointerDistance(pointers[0], pointers[1])
+
+    if (!pinchRef.current) {
+      pinchRef.current = { distance, zoom }
+      return
+    }
+
+    setZoom(
+      getPinchZoom({
+        currentDistance: distance,
+        maxZoom: MAX_ZOOM,
+        minZoom: MIN_ZOOM,
+        startDistance: pinchRef.current.distance,
+        startZoom: pinchRef.current.zoom,
+      })
+    )
+  }
+
+  const handlePointerEnd = (event: ReactPointerEvent<HTMLDivElement>) => {
+    activePointersRef.current.delete(event.pointerId)
+    if (activePointersRef.current.size < 2) {
+      pinchRef.current = null
+    }
+  }
+
   const cultures = culturesQuery.data ?? []
   const isLoading = entitiesQuery.isLoading
 
@@ -171,7 +223,10 @@ export default function TimelinePage() {
       </header>
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <Tabs value={typeFilter} onValueChange={(value) => setTypeFilter(value as TimelineTypeFilter)}>
+        <Tabs
+          value={typeFilter}
+          onValueChange={(value) => setTypeFilter(value as TimelineTypeFilter)}
+        >
           <TabsList>
             {typeTabs.map((tab) => (
               <TabsTrigger key={tab.value} value={tab.value}>
@@ -254,6 +309,12 @@ export default function TimelinePage() {
       <div
         ref={scrollRef}
         className="overflow-x-auto rounded-lg border-0.5 border-black/10 bg-white px-8 py-4"
+        style={{ touchAction: 'pan-x' }}
+        onPointerCancel={handlePointerEnd}
+        onPointerDown={handlePointerDown}
+        onPointerLeave={handlePointerEnd}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerEnd}
       >
         {isLoading ? (
           <div className="h-[460px] animate-pulse rounded bg-black/[0.03]" />
@@ -340,7 +401,9 @@ export default function TimelinePage() {
                   className="cursor-pointer"
                   onClick={() => handleDotClick(entity)}
                   onMouseEnter={() => setHoveredId(entity.id)}
-                  onMouseLeave={() => setHoveredId((current) => (current === entity.id ? null : current))}
+                  onMouseLeave={() =>
+                    setHoveredId((current) => (current === entity.id ? null : current))
+                  }
                 >
                   <line
                     stroke={color}
@@ -391,7 +454,7 @@ export default function TimelinePage() {
         {filteredEntities.length === 1 ? 'entity' : 'entities'}. Click a dot to inspect it.
       </p>
 
-      <GraphSidePanel />
+      {activeNodeId ? <GraphSidePanel /> : null}
     </div>
   )
 }

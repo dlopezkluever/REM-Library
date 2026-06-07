@@ -305,6 +305,8 @@ export type Database = {
           created_by: string | null
           description: string | null
           id: string
+          published_at: string | null
+          status: Database['public']['Enums']['content_status']
           title: string
           updated_at: string
         }
@@ -313,6 +315,8 @@ export type Database = {
           created_by?: string | null
           description?: string | null
           id?: string
+          published_at?: string | null
+          status?: Database['public']['Enums']['content_status']
           title: string
           updated_at?: string
         }
@@ -321,6 +325,8 @@ export type Database = {
           created_by?: string | null
           description?: string | null
           id?: string
+          published_at?: string | null
+          status?: Database['public']['Enums']['content_status']
           title?: string
           updated_at?: string
         }

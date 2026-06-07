@@ -29,12 +29,14 @@ const claim = {
 const evidence: CitationInput[] = [
   {
     anchor: {
+      id: 'anchor-1',
       start_timestamp_sec: 90,
       end_timestamp_sec: null,
       start_page: null,
       end_page: null,
     },
     source: {
+      id: 'source-1',
       title: 'The Stolen Fire',
       authors: ['Jane Goodall'],
       publication_date: '2021-05-01',
@@ -77,6 +79,21 @@ describe('buildEntityExport', () => {
     expect(output).toContain('Confidence: 50%')
     expect(output).not.toContain('**')
   })
+
+  it('deduplicates repeated source anchors and uses an absolute canonical URL when provided', () => {
+    const output = buildEntityExport(
+      {
+        canonicalUrl: 'https://mythograph.example/entity/fire',
+        entity,
+        connections: [],
+        evidence: [evidence[0], evidence[0]],
+      },
+      { format: 'markdown', citationStyle: 'informal' }
+    )
+
+    expect(output.match(/The Stolen Fire/g)).toHaveLength(1)
+    expect(output).toContain('Exported from Mythograph · https://mythograph.example/entity/fire')
+  })
 })
 
 describe('buildClaimExport', () => {
@@ -93,7 +110,7 @@ describe('buildClaimExport', () => {
     expect(output).toContain('Fire parallels the stolen divine spark. [^1]')
     expect(output).toContain('## Entities Involved')
     expect(output).toContain('- Fire (Symbol)')
-    expect(output).toContain('[^1]: Goodall, Jane. "The Stolen Fire." Audio, 2021. 00:01:30.')
+    expect(output).toContain('[^1]: Goodall, Jane. "The Stolen Fire." Audio, 2021-05-01. 00:01:30.')
     expect(output).toContain('**Author:** Jane Goodall')
   })
 

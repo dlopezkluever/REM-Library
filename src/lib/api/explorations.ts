@@ -4,6 +4,7 @@ import type { EntityType } from '@/types/domain'
 
 export type ExplorationRow = Tables<'explorations'>
 export type ExplorationStepRow = Tables<'exploration_steps'>
+export type ExplorationPublicationStatus = Extract<ExplorationRow['status'], 'draft' | 'published'>
 
 export interface ExplorationSummary {
   id: string
@@ -27,6 +28,7 @@ export interface ExplorationStepInput {
 export interface CreateExplorationInput {
   title: string
   description: string | null
+  status?: ExplorationPublicationStatus
   steps: ExplorationStepInput[]
 }
 
@@ -36,6 +38,8 @@ export const getPublishedExplorations = async (): Promise<ExplorationSummary[]> 
   const { data: explorations, error } = await supabase
     .from('explorations')
     .select('*')
+    .eq('status', 'published')
+    .order('published_at', { ascending: false, nullsFirst: false })
     .order('created_at', { ascending: false })
 
   if (error) {
@@ -59,9 +63,7 @@ export const getPublishedExplorations = async (): Promise<ExplorationSummary[]> 
   }
 
   const entityIds = unique(
-    steps
-      .map((step) => step.entity_id)
-      .filter((entityId): entityId is string => entityId !== null)
+    steps.map((step) => step.entity_id).filter((entityId): entityId is string => entityId !== null)
   )
 
   const typeById = new Map<string, EntityType>()
@@ -108,6 +110,7 @@ export const getExplorationById = async (id: string): Promise<ExplorationDetail 
     .from('explorations')
     .select('*')
     .eq('id', id)
+    .eq('status', 'published')
     .maybeSingle()
 
   if (error) {
@@ -131,11 +134,10 @@ export const getExplorationById = async (id: string): Promise<ExplorationDetail 
   return { exploration, steps }
 }
 
-export const createExploration = async (
-  input: CreateExplorationInput
-): Promise<ExplorationRow> => {
+export const createExploration = async (input: CreateExplorationInput): Promise<ExplorationRow> => {
   const { data: userData } = await supabase.auth.getUser()
   const createdBy = userData?.user?.id ?? null
+  const status = input.status ?? 'draft'
 
   const { data: exploration, error } = await supabase
     .from('explorations')
@@ -143,6 +145,8 @@ export const createExploration = async (
       title: input.title,
       description: input.description,
       created_by: createdBy,
+      published_at: status === 'published' ? new Date().toISOString() : null,
+      status,
     })
     .select('*')
     .single()

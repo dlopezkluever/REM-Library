@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  formatAnchorLocator,
-  formatChicagoCitation,
-  formatInformalCitation,
-} from '@/lib/citations'
+import { formatAnchorLocator, formatChicagoCitation, formatInformalCitation } from '@/lib/citations'
 import type { SourceAnchorRow, SourceRow } from '@/lib/api/sources'
 
 const makeAnchor = (overrides: Partial<SourceAnchorRow> = {}): SourceAnchorRow =>
@@ -64,12 +60,20 @@ describe('formatAnchorLocator', () => {
 })
 
 describe('formatChicagoCitation', () => {
-  it('formats author, title, format, year, and locator', () => {
+  it('formats author, title, format, full date, and locator', () => {
     const citation = formatChicagoCitation({
       anchor: makeAnchor({ start_timestamp_sec: 90 }),
       source: makeSource(),
     })
-    expect(citation).toBe('Goodall, Jane. "The Stolen Fire." Audio, 2021. 00:01:30.')
+    expect(citation).toBe('Goodall, Jane. "The Stolen Fire." Audio, 2021-05-01. 00:01:30.')
+  })
+
+  it('keeps year-only source dates clean', () => {
+    const citation = formatChicagoCitation({
+      anchor: makeAnchor(),
+      source: makeSource({ publication_date: '2021' }),
+    })
+    expect(citation).toBe('Goodall, Jane. "The Stolen Fire." Audio, 2021.')
   })
 
   it('marks multiple authors with et al.', () => {

@@ -119,6 +119,7 @@ export default function EntityDetailPage() {
               buildExport={(options) =>
                 buildEntityExport(
                   {
+                    canonicalUrl: window.location.href,
                     entity,
                     connections: connectedEntities.map((connectedEntity) => {
                       const relationship = relationships.find(
@@ -168,7 +169,9 @@ export default function EntityDetailPage() {
                   <EntityChip
                     key={connectedEntity.id}
                     name={connectedEntity.name}
-                    relationshipLabel={relationship ? relationshipLabel(relationship.type) : undefined}
+                    relationshipLabel={
+                      relationship ? relationshipLabel(relationship.type) : undefined
+                    }
                     slug={connectedEntity.slug}
                     type={connectedEntity.type}
                   />

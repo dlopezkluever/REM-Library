@@ -104,7 +104,39 @@ export default function GraphPage() {
     setBlockedFocus(null)
   }
 
+  const openBlockedFocusIn2D = () => {
+    if (!blockedFocus) {
+      return
+    }
+
+    setPendingFocus({ id: blockedFocus.id, name: blockedFocus.name })
+    setBlockedFocus(null)
+    setViewMode('2d')
+  }
+
   const dismissBlockedFocus = () => setBlockedFocus(null)
+
+  const blockedFocusMessage = blockedFocus
+    ? blockedFocus.reason === 'hidden'
+      ? `${blockedFocus.name} is hidden by your current filters.`
+      : blockedFocus.reason === 'capped'
+        ? `${blockedFocus.name} is outside the 3D top 2,000 node cap. Use filters to narrow the graph, or open it in 2D.`
+        : 'This entity is not loaded in the current graph view.'
+    : null
+
+  const blockedFocusAction =
+    blockedFocus?.reason === 'hidden'
+      ? retryBlockedFocus
+      : blockedFocus?.reason === 'capped'
+        ? openBlockedFocusIn2D
+        : dismissBlockedFocus
+
+  const blockedFocusActionLabel =
+    blockedFocus?.reason === 'hidden'
+      ? 'Clear filters'
+      : blockedFocus?.reason === 'capped'
+        ? 'Open in 2D'
+        : 'Dismiss'
 
   const handleViewModeChange = useCallback(
     (mode: GraphViewMode) => {
@@ -174,17 +206,13 @@ export default function GraphPage() {
       </div>
       {blockedFocus ? (
         <div className="absolute bottom-5 left-1/2 z-40 flex w-[min(calc(100vw-2rem),420px)] -translate-x-1/2 items-center justify-between gap-4 rounded border-0.5 border-white/10 bg-charcoal/95 px-4 py-3 text-white shadow-xl backdrop-blur-md">
-          <p className="font-body text-[12px] text-white/70">
-            {blockedFocus.reason === 'hidden'
-              ? `${blockedFocus.name} is hidden by your current filters.`
-              : 'This entity is not loaded in the current graph view.'}
-          </p>
+          <p className="font-body text-[12px] text-white/70">{blockedFocusMessage}</p>
           <button
             className="shrink-0 font-body text-[12px] text-verdigris-light hover:text-white"
             type="button"
-            onClick={blockedFocus.reason === 'hidden' ? retryBlockedFocus : dismissBlockedFocus}
+            onClick={blockedFocusAction}
           >
-            {blockedFocus.reason === 'hidden' ? 'Clear filters' : 'Dismiss'}
+            {blockedFocusActionLabel}
           </button>
         </div>
       ) : null}
