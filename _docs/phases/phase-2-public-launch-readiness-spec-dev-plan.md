@@ -82,23 +82,23 @@ This document is the complete technical and product specification for that work.
 
 ### 2.8 Relevant Existing Infrastructure
 
-| Asset | Location | Notes |
-|---|---|---|
-| `claims` table | `20260523020000_core_tables.sql` | `confidence_override` column exists, unused in UI (Phase 1 adds UI) |
-| `entities` table | `20260523020000_core_tables.sql` | Has `position_x/y`, `date_era`, `date_sort_year`, `description` |
-| `review_extraction_item()` | `20260531130000_review_queue_hardening.sql:417` | Sole path for creating confirmed claims/entities |
-| `source_tier` enum | `20260523010000_enums.sql` | `primary`, `secondary` only |
-| `source_format` enum | `20260523010000_enums.sql` | Includes `url` |
-| `content_status` enum | `20260523010000_enums.sql` | `draft`, `published`, `disputed`, `archived` |
-| `admin_audit_events` | `20260531130000_review_queue_hardening.sql` | Logs every review/status action |
-| `AdminClaimManagerPage.tsx` | `src/pages/admin/` | Claim list, status toggles |
-| `AdminEntityManagerPage.tsx` | `src/pages/admin/` | Entity list, status toggles |
-| `AdminSourceDetailPage.tsx` | `src/pages/admin/` | Source detail, tier dropdown (Phase 1) |
-| `GraphSidePanel.tsx` | `src/components/graph/` | Node drawer |
-| `GraphCanvas.tsx` | `src/components/graph/` | 2D graph, fires `setActiveNodeId:233` |
-| `GraphCanvas3D.tsx` | `src/components/graph/` | 3D graph, fires `setActiveNodeId:148` |
-| `getClaimsForEntity()` | `src/lib/api/claims.ts:77` | `confidence_score DESC`, no grouping |
-| `compute-confidence` | `supabase/functions/compute-confidence/index.ts` | Confidence formula |
+| Asset                        | Location                                         | Notes                                                               |
+| ---------------------------- | ------------------------------------------------ | ------------------------------------------------------------------- |
+| `claims` table               | `20260523020000_core_tables.sql`                 | `confidence_override` column exists, unused in UI (Phase 1 adds UI) |
+| `entities` table             | `20260523020000_core_tables.sql`                 | Has `position_x/y`, `date_era`, `date_sort_year`, `description`     |
+| `review_extraction_item()`   | `20260531130000_review_queue_hardening.sql:417`  | Sole path for creating confirmed claims/entities                    |
+| `source_tier` enum           | `20260523010000_enums.sql`                       | `primary`, `secondary` only                                         |
+| `source_format` enum         | `20260523010000_enums.sql`                       | Includes `url`                                                      |
+| `content_status` enum        | `20260523010000_enums.sql`                       | `draft`, `published`, `disputed`, `archived`                        |
+| `admin_audit_events`         | `20260531130000_review_queue_hardening.sql`      | Logs every review/status action                                     |
+| `AdminClaimManagerPage.tsx`  | `src/pages/admin/`                               | Claim list, status toggles                                          |
+| `AdminEntityManagerPage.tsx` | `src/pages/admin/`                               | Entity list, status toggles                                         |
+| `AdminSourceDetailPage.tsx`  | `src/pages/admin/`                               | Source detail, tier dropdown (Phase 1)                              |
+| `GraphSidePanel.tsx`         | `src/components/graph/`                          | Node drawer                                                         |
+| `GraphCanvas.tsx`            | `src/components/graph/`                          | 2D graph, fires `setActiveNodeId:233`                               |
+| `GraphCanvas3D.tsx`          | `src/components/graph/`                          | 3D graph, fires `setActiveNodeId:148`                               |
+| `getClaimsForEntity()`       | `src/lib/api/claims.ts:77`                       | `confidence_score DESC`, no grouping                                |
+| `compute-confidence`         | `supabase/functions/compute-confidence/index.ts` | Confidence formula                                                  |
 
 ---
 
@@ -169,16 +169,17 @@ After Phase 2 is complete:
 
 **Values:**
 
-| Value | Meaning |
-|---|---|
-| `canonical_rem` | The core, authoritative REM interpretation |
-| `supporting_context` | Context that supports or elaborates the canonical view |
-| `external_academic` | Perspective from external academic scholarship |
-| `historical_record` | Documented historical fact or record |
-| `literary_artistic` | Literary, artistic, or symbolic interpretation |
+| Value                  | Meaning                                                             |
+| ---------------------- | ------------------------------------------------------------------- |
+| `canonical_rem`        | The core, authoritative REM interpretation                          |
+| `supporting_context`   | Context that supports or elaborates the canonical view              |
+| `external_academic`    | Perspective from external academic scholarship                      |
+| `historical_record`    | Documented historical fact or record                                |
+| `literary_artistic`    | Literary, artistic, or symbolic interpretation                      |
 | `disputed_alternative` | A reading that contradicts or disputes the canonical interpretation |
 
 **Behavior:**
+
 - The column is nullable on `claims`. Existing claims have `NULL` interpretation_frame.
 - Admins assign the frame either during extraction review (`ExtractionReviewPanel.tsx`) or after the fact in `AdminClaimManagerPage.tsx`.
 - The frame is distinct from `status`. A claim can be `published` with any frame value. A claim with `status = 'disputed'` and `interpretation_frame = 'disputed_alternative'` has overlapping but distinct signals.
@@ -193,6 +194,7 @@ After Phase 2 is complete:
 **What it is:** A boolean on `claims` that marks the single most important interpretive claim for a given entity.
 
 **Behavior:**
+
 - Default `false`. Admins explicitly set it `true`.
 - At most one claim per entity should be canonical. This is soft-enforced at the application level (the UI warns if another canonical claim already exists for the entity). A DB-level unique partial index is impractical because claims link to entities via the `claim_entities` join table (one claim can relate to multiple entities).
 - On the entity detail page, the canonical claim is always shown first in the "Core Interpretation" section, regardless of `confidence_score`.
@@ -216,6 +218,7 @@ After Phase 2 is complete:
 7. **Disputed Readings** — claims with `status = 'disputed'` (requires Phase 1 disputed-status button to be useful). Shown with a visual disclaimer ("These readings are marked as disputed by curators").
 
 **Behavior:**
+
 - Sections with zero claims are not rendered (not even an empty heading).
 - Each claim within a section continues to be ordered by `confidence_score DESC` as a secondary sort.
 - The `disputed` claims section requires the public query to optionally return disputed claims. Currently `status != 'published'` claims are fully excluded. The public query for entity pages should be updated to include `disputed` claims in a separate field, not mixed with published ones.
@@ -227,6 +230,7 @@ After Phase 2 is complete:
 **What it is:** Add 1–2 key claims directly to the `GraphSidePanel.tsx` drawer.
 
 **Behavior:**
+
 - After the existing description paragraph, add a "Key interpretations" subsection.
 - Show at most 2 claims. Priority: first the claim where `is_canonical = true` (if any), then the top `confidence_score` published claim.
 - Each claim is rendered as a short excerpt (max ~120 characters) with an `interpretation_frame` badge if set.
@@ -240,6 +244,7 @@ After Phase 2 is complete:
 **What it is:** A standalone admin form to create a new entity without going through AI extraction.
 
 **Fields:**
+
 - `name` (required, text)
 - `entity_type` (required, select from `entity_type` enum)
 - `description` (optional, textarea, markdown)
@@ -248,6 +253,7 @@ After Phase 2 is complete:
 - `status` (select: `draft` / `published`, default `draft`)
 
 **Behavior:**
+
 - On submit, calls a new `createAdminEntity()` function in `src/lib/api/admin.ts`.
 - The created entity has no claims, no source anchors, and no relationships. It is a stub.
 - Redirects to the entity detail page in admin context after creation.
@@ -262,6 +268,7 @@ After Phase 2 is complete:
 **What it is:** A standalone admin form to write a claim by hand and attach it to one or more entities.
 
 **Fields:**
+
 - `content` (required, textarea — the claim statement itself)
 - `entities` (required, multi-select search: attach this claim to one or more existing entities)
 - `interpretation_frame` (optional, select from `interpretation_frame` enum)
@@ -270,6 +277,7 @@ After Phase 2 is complete:
 - `source` (optional — allow attaching a source anchor to give it evidence at creation time; can also be added later)
 
 **Behavior:**
+
 - On submit, calls a new `createAdminClaim()` function in `src/lib/api/admin.ts`.
 - Directly inserts into `claims` and `claim_entities` tables, bypassing the AI extraction pipeline.
 - Does not create an extraction record. This is admin-authored content, not AI-extracted content.
@@ -286,16 +294,17 @@ After Phase 2 is complete:
 
 **Enum values:**
 
-| Value | Meaning |
-|---|---|
-| `primary_rem` | Core REM group source material |
-| `secondary_rem` | Adjacent or related REM material |
-| `external_academic` | External academic scholarship |
-| `historical_record` | Historical document or record |
-| `literary_artistic` | Literary, artistic, or cultural source |
+| Value                 | Meaning                                             |
+| --------------------- | --------------------------------------------------- |
+| `primary_rem`         | Core REM group source material                      |
+| `secondary_rem`       | Adjacent or related REM material                    |
+| `external_academic`   | External academic scholarship                       |
+| `historical_record`   | Historical document or record                       |
+| `literary_artistic`   | Literary, artistic, or cultural source              |
 | `community_submitted` | Submitted by a community member (Phase 3 relevance) |
 
 **Behavior:**
+
 - The existing `tier` column (`source_tier`) remains on the table unchanged. It is not removed.
 - `source_category` is a new nullable column. Backfill on migration: `primary tier → primary_rem`, `secondary tier → secondary_rem`.
 - The source creation form (`AdminSourceNewPage.tsx`) gets a `category` dropdown replacing the current `tier` dropdown for new sources. The `tier` value is derived from `category` for backwards compatibility with the confidence formula: `primary_rem` and `secondary_rem` → `primary`, everything else → `secondary`.
@@ -326,12 +335,14 @@ After Phase 2 is complete:
 4. Admin sees the source advance in `AdminSourceDetailPage.tsx` and can then trigger the normal extraction pipeline.
 
 **Safety constraints:**
+
 - Domain allowlist is required. No arbitrary external requests without explicit admin configuration.
 - The function must not auto-trigger extraction. After fetching and chunking, the source waits at the pre-extraction stage for explicit admin approval.
 - Handle common failure modes: 404, 403, paywall signals (thin content), JavaScript-rendered pages returning empty HTML.
 - URL-format sources already have a `UNIQUE` constraint on `sources.url` (Phase 1 item 1.5). No duplicate check is needed here — it was enforced at creation.
 
 **Route config table (`url_ingestion_config`):**
+
 - `id`, `domain text UNIQUE NOT NULL`, `enabled boolean DEFAULT true`, `added_by uuid`, `created_at timestamptz`
 - Admin-only insert/update via RLS.
 - Edge function reads this table before fetching.
@@ -437,24 +448,24 @@ All new and modified functions live in `src/lib/api/admin.ts` unless otherwise n
 
 ### 8.1 New functions
 
-| Function | Description |
-|---|---|
-| `createAdminEntity(data)` | Insert into `entities`, log to `admin_audit_events`. |
-| `createAdminClaim(data)` | Insert into `claims` + `claim_entities`, log to audit. `is_canonical` write gated to `super_admin`. |
-| `updateClaimInterpretationFrame(id, frame)` | Set `interpretation_frame` on a claim. Any `is_admin()`. |
-| `setClaimCanonical(id, value)` | Set `is_canonical` on a claim. `super_admin` only. Conflict-check before setting `true`. |
-| `updateSourceCategory(id, category)` | Set `category` (and derive `tier`) on a source. Also updates `tier` for confidence formula compatibility. |
-| `triggerUrlFetch(sourceId)` | Calls the `trigger-url-fetch` edge function. Returns status and any errors. |
-| `createUrlIngestionDomain(domain)` | Insert into `url_ingestion_config`. `super_admin` only. |
-| `listUrlIngestionDomains()` | Read `url_ingestion_config`. Any admin. |
+| Function                                    | Description                                                                                               |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `createAdminEntity(data)`                   | Insert into `entities`, log to `admin_audit_events`.                                                      |
+| `createAdminClaim(data)`                    | Insert into `claims` + `claim_entities`, log to audit. `is_canonical` write gated to `super_admin`.       |
+| `updateClaimInterpretationFrame(id, frame)` | Set `interpretation_frame` on a claim. Any `is_admin()`.                                                  |
+| `setClaimCanonical(id, value)`              | Set `is_canonical` on a claim. `super_admin` only. Conflict-check before setting `true`.                  |
+| `updateSourceCategory(id, category)`        | Set `category` (and derive `tier`) on a source. Also updates `tier` for confidence formula compatibility. |
+| `triggerUrlFetch(sourceId)`                 | Calls the `trigger-url-fetch` edge function. Returns status and any errors.                               |
+| `createUrlIngestionDomain(domain)`          | Insert into `url_ingestion_config`. `super_admin` only.                                                   |
+| `listUrlIngestionDomains()`                 | Read `url_ingestion_config`. Any admin.                                                                   |
 
 ### 8.2 Modified functions
 
-| Function | Change |
-|---|---|
-| `getClaimsForEntity()` in `src/lib/api/claims.ts` | Add `interpretation_frame`, `is_canonical` to SELECT. Add optional `includeDisputed` parameter that returns disputed claims in a separate field. Order: `is_canonical DESC, confidence_score DESC`. |
-| `getEntityPreview()` or neighborhood query in `src/lib/api/entities.ts` | Add top-2 claims (by `is_canonical DESC, confidence_score DESC`) to the return payload for graph side panel use. |
-| `createAdminSource()` | Accept `category` field in addition to `tier`. Derive `tier` from `category` if category is provided. |
+| Function                                                                | Change                                                                                                                                                                                              |
+| ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `getClaimsForEntity()` in `src/lib/api/claims.ts`                       | Add `interpretation_frame`, `is_canonical` to SELECT. Add optional `includeDisputed` parameter that returns disputed claims in a separate field. Order: `is_canonical DESC, confidence_score DESC`. |
+| `getEntityPreview()` or neighborhood query in `src/lib/api/entities.ts` | Add top-2 claims (by `is_canonical DESC, confidence_score DESC`) to the return payload for graph side panel use.                                                                                    |
+| `createAdminSource()`                                                   | Accept `category` field in addition to `tier`. Derive `tier` from `category` if category is provided.                                                                                               |
 
 ### 8.3 Edge Function
 
@@ -504,6 +515,7 @@ Replace the current flat claims list (lines 148–219) with a sectioned componen
 ### 9.4 `GraphSidePanel.tsx` — Claims Preview
 
 After the description block, add a "Key interpretations" subsection:
+
 - Fetch top claims via `getEntityPreviewWithClaims()` (or extend the existing neighborhood query).
 - Render at most 2 claims as compact cards: frame badge (if set) + truncated content (max 120 chars).
 - If neither claim has `is_canonical = true`, show the top 2 by `confidence_score`.
@@ -540,6 +552,7 @@ Add route to admin router. Add "Create claim" button to `AdminClaimManagerPage.t
 ### 9.8 `AdminSourceDetailPage.tsx` — URL Fetch Trigger Button
 
 For sources with `format = 'url'` and `pipeline_stage = 'uploaded'`:
+
 - Show a "Fetch URL" button.
 - On click: call `triggerUrlFetch(sourceId)` → show loading state → on success, refresh the page to show updated `pipeline_stage`.
 - On error: show the error message returned by the edge function (e.g., "Domain not in allowlist", "Content below minimum word count").
@@ -549,6 +562,7 @@ Remove the existing `disabledReason` warning message once the edge function exis
 ### 9.9 URL Ingestion Domain Management (Minimal UI)
 
 A simple admin-only table view under `/admin/settings/url-domains` (or added to a settings/config section):
+
 - List all domains in `url_ingestion_config`.
 - Add domain form (text input + submit).
 - Toggle enabled/disabled.
@@ -561,24 +575,27 @@ A simple admin-only table view under `/admin/settings/url-domains` (or added to 
 ### Step 1 — Database Migrations
 
 **1.1** Write migration `20260608000000_interpretation_frame.sql`:
-  - Create `interpretation_frame` enum with 6 values.
-  - `ALTER TABLE public.claims ADD COLUMN interpretation_frame public.interpretation_frame`.
-  - `ALTER TABLE public.claims ADD COLUMN is_canonical boolean NOT NULL DEFAULT false`.
+
+- Create `interpretation_frame` enum with 6 values.
+- `ALTER TABLE public.claims ADD COLUMN interpretation_frame public.interpretation_frame`.
+- `ALTER TABLE public.claims ADD COLUMN is_canonical boolean NOT NULL DEFAULT false`.
 
 **1.2** Write migration `20260608000100_source_category.sql`:
-  - Create `source_category` enum with 6 values.
-  - `ALTER TABLE public.sources ADD COLUMN category public.source_category`.
-  - `ALTER TABLE public.sources ADD COLUMN crawl_date timestamptz`.
-  - `ALTER TABLE public.sources ADD COLUMN license text`.
-  - `ALTER TABLE public.sources ADD COLUMN rights_notes text`.
-  - `ALTER TABLE public.sources ADD COLUMN attribution text`.
-  - Backfill `category` from existing `tier` values.
+
+- Create `source_category` enum with 6 values.
+- `ALTER TABLE public.sources ADD COLUMN category public.source_category`.
+- `ALTER TABLE public.sources ADD COLUMN crawl_date timestamptz`.
+- `ALTER TABLE public.sources ADD COLUMN license text`.
+- `ALTER TABLE public.sources ADD COLUMN rights_notes text`.
+- `ALTER TABLE public.sources ADD COLUMN attribution text`.
+- Backfill `category` from existing `tier` values.
 
 **1.3** Write migration `20260608000200_url_ingestion_config.sql`:
-  - Create `url_ingestion_config` table.
-  - Enable RLS.
-  - Add admin read policy.
-  - Add super_admin write policy.
+
+- Create `url_ingestion_config` table.
+- Enable RLS.
+- Add admin read policy.
+- Add super_admin write policy.
 
 **1.4** Apply migrations to the online Supabase project (`mbnepcnvjbrtamvwlicl.supabase.co`). Verify with a quick `SELECT column_name FROM information_schema.columns WHERE table_name = 'claims'` to confirm new columns.
 
@@ -587,35 +604,38 @@ A simple admin-only table view under `/admin/settings/url-domains` (or added to 
 ### Step 2 — API / Service Layer
 
 **2.1** In `src/lib/api/claims.ts`:
-  - Update `getClaimsForEntity()`:
-    - Add `interpretation_frame`, `is_canonical` to the SELECT.
-    - Update ORDER BY to `is_canonical DESC, confidence_score DESC`.
-    - Add optional `includeDisputed?: boolean` parameter. When true, run a second query for `status = 'disputed'` claims and return them as `disputedClaims` in the result object.
+
+- Update `getClaimsForEntity()`:
+  - Add `interpretation_frame`, `is_canonical` to the SELECT.
+  - Update ORDER BY to `is_canonical DESC, confidence_score DESC`.
+  - Add optional `includeDisputed?: boolean` parameter. When true, run a second query for `status = 'disputed'` claims and return them as `disputedClaims` in the result object.
 
 **2.2** In `src/lib/api/entities.ts`:
-  - Update the neighborhood/preview query (or add `getEntityPreviewWithClaims(entityId)`):
-    - Join to `claim_entities` → `claims` for the preview, filtered to `status = 'published'`, ordered `is_canonical DESC, confidence_score DESC LIMIT 2`.
-    - Return both the entity data and `previewClaims: Claim[]`.
+
+- Update the neighborhood/preview query (or add `getEntityPreviewWithClaims(entityId)`):
+  - Join to `claim_entities` → `claims` for the preview, filtered to `status = 'published'`, ordered `is_canonical DESC, confidence_score DESC LIMIT 2`.
+  - Return both the entity data and `previewClaims: Claim[]`.
 
 **2.3** In `src/lib/api/admin.ts`:
-  - Add `createAdminEntity(data: { name, entity_type, description?, date_era?, date_sort_year?, status })` — INSERT into `entities`, log to `admin_audit_events`.
-  - Add `createAdminClaim(data: { content, entity_ids, interpretation_frame?, is_canonical?, status })`:
-    - INSERT into `claims`.
-    - INSERT into `claim_entities` for each entity_id.
-    - If `is_canonical = true`, run conflict check first (see §7.5). Restrict to `super_admin`.
-    - Log to `admin_audit_events`.
-  - Add `updateClaimInterpretationFrame(id, frame)` — UPDATE claims SET interpretation_frame.
-  - Add `setClaimCanonical(id, value)`:
-    - If `value = true`: run conflict check, return `{ conflict: true, existingCanonicalClaimId }` if conflict found; accept a `forceReplace: boolean` parameter to unset the old canonical in the same update.
-    - Restrict to `super_admin` by checking calling user's role.
-    - UPDATE claims SET is_canonical.
-  - Add `updateSourceCategory(id, category)`:
-    - Derive `tier` from `category`: `primary_rem`/`secondary_rem` → `primary`; all others → `secondary`.
-    - UPDATE sources SET category = $1, tier = $2.
-  - Add `triggerUrlFetch(sourceId)` — POST to Supabase edge function `trigger-url-fetch`.
-  - Add `createUrlIngestionDomain(domain)` — INSERT into `url_ingestion_config`.
-  - Add `listUrlIngestionDomains()` — SELECT from `url_ingestion_config`.
-  - Modify `createAdminSource()` to accept `category?: source_category` and derive `tier` from it.
+
+- Add `createAdminEntity(data: { name, entity_type, description?, date_era?, date_sort_year?, status })` — INSERT into `entities`, log to `admin_audit_events`.
+- Add `createAdminClaim(data: { content, entity_ids, interpretation_frame?, is_canonical?, status })`:
+  - INSERT into `claims`.
+  - INSERT into `claim_entities` for each entity_id.
+  - If `is_canonical = true`, run conflict check first (see §7.5). Restrict to `super_admin`.
+  - Log to `admin_audit_events`.
+- Add `updateClaimInterpretationFrame(id, frame)` — UPDATE claims SET interpretation_frame.
+- Add `setClaimCanonical(id, value)`:
+  - If `value = true`: run conflict check, return `{ conflict: true, existingCanonicalClaimId }` if conflict found; accept a `forceReplace: boolean` parameter to unset the old canonical in the same update.
+  - Restrict to `super_admin` by checking calling user's role.
+  - UPDATE claims SET is_canonical.
+- Add `updateSourceCategory(id, category)`:
+  - Derive `tier` from `category`: `primary_rem`/`secondary_rem` → `primary`; all others → `secondary`.
+  - UPDATE sources SET category = $1, tier = $2.
+- Add `triggerUrlFetch(sourceId)` — POST to Supabase edge function `trigger-url-fetch`.
+- Add `createUrlIngestionDomain(domain)` — INSERT into `url_ingestion_config`.
+- Add `listUrlIngestionDomains()` — SELECT from `url_ingestion_config`.
+- Modify `createAdminSource()` to accept `category?: source_category` and derive `tier` from it.
 
 ---
 
@@ -624,6 +644,7 @@ A simple admin-only table view under `/admin/settings/url-domains` (or added to 
 **3.1** Create `supabase/functions/trigger-url-fetch/index.ts`.
 
 **3.2** Implementation outline:
+
 ```
 1. Parse request body: { sourceId }
 2. Authenticate: verify admin JWT (same pattern as existing edge functions)
@@ -648,25 +669,28 @@ A simple admin-only table view under `/admin/settings/url-domains` (or added to 
 ### Step 4 — Extraction Review Panel Update
 
 **4.1** In `src/components/admin/ExtractionReviewPanel.tsx`, around the claim edit form (line 210 area):
-  - Add `interpretation_frame` `<select>` dropdown with the six enum values plus a "No frame" option.
-  - Add `is_canonical` checkbox, rendered only when `currentUser.role === 'super_admin'`.
-  - Wire both fields into the item edit state and include them in the `review_extraction_item()` call payload (or the post-confirmation update call).
+
+- Add `interpretation_frame` `<select>` dropdown with the six enum values plus a "No frame" option.
+- Add `is_canonical` checkbox, rendered only when `currentUser.role === 'super_admin'`.
+- Wire both fields into the item edit state and include them in the `review_extraction_item()` call payload (or the post-confirmation update call).
 
 ---
 
 ### Step 5 — Claim Manager Update
 
 **5.1** In `src/pages/admin/AdminClaimManagerPage.tsx`:
-  - Add `interpretation_frame` column to the table (inline `<select>` that fires `updateClaimInterpretationFrame()` on change).
-  - Add `is_canonical` column — badge display for all admins, toggle for `super_admin` only.
-  - Add "Create claim" button in the page header linking to `/admin/claims/new`.
+
+- Add `interpretation_frame` column to the table (inline `<select>` that fires `updateClaimInterpretationFrame()` on change).
+- Add `is_canonical` column — badge display for all admins, toggle for `super_admin` only.
+- Add "Create claim" button in the page header linking to `/admin/claims/new`.
 
 ---
 
 ### Step 6 — Entity Manager Update
 
 **6.1** In `src/pages/admin/AdminEntityManagerPage.tsx`:
-  - Add "Create entity" button in the page header linking to `/admin/entities/new`.
+
+- Add "Create entity" button in the page header linking to `/admin/entities/new`.
 
 ---
 
@@ -683,39 +707,43 @@ A simple admin-only table view under `/admin/settings/url-domains` (or added to 
 ### Step 8 — Source Detail Page Updates
 
 **8.1** In `src/pages/admin/AdminSourceDetailPage.tsx`:
-  - Add `source_category` dropdown (fires `updateSourceCategory()`).
-  - Display `crawl_date` if set (read-only, formatted date string).
-  - Add `license`, `rights_notes`, `attribution` text inputs (optional, no validation).
-  - For URL-format sources at `pipeline_stage = 'uploaded'`: render a "Fetch URL" button that calls `triggerUrlFetch()`.
-  - Remove or replace the `disabledReason` "not available yet" message.
+
+- Add `source_category` dropdown (fires `updateSourceCategory()`).
+- Display `crawl_date` if set (read-only, formatted date string).
+- Add `license`, `rights_notes`, `attribution` text inputs (optional, no validation).
+- For URL-format sources at `pipeline_stage = 'uploaded'`: render a "Fetch URL" button that calls `triggerUrlFetch()`.
+- Remove or replace the `disabledReason` "not available yet" message.
 
 ---
 
 ### Step 9 — Entity Detail Page Refactor
 
 **9.1** In `src/pages/entity/EntityDetailPage.tsx`:
-  - Replace the flat claims list (lines 148–219) with the sectioned component layout (§9.3).
-  - Create a `ClaimSection` component (can live in `src/components/entity/ClaimSection.tsx` or inline).
-  - Pass `includeDisputed: true` to `getClaimsForEntity()` and route the `disputedClaims` result to the Disputed Readings section.
+
+- Replace the flat claims list (lines 148–219) with the sectioned component layout (§9.3).
+- Create a `ClaimSection` component (can live in `src/components/entity/ClaimSection.tsx` or inline).
+- Pass `includeDisputed: true` to `getClaimsForEntity()` and route the `disputedClaims` result to the Disputed Readings section.
 
 ---
 
 ### Step 10 — Graph Side Panel Update
 
 **10.1** In `src/components/graph/GraphSidePanel.tsx`:
-  - Update the data fetch to use `getEntityPreviewWithClaims()` (from Step 2.2).
-  - Add the "Key interpretations" subsection after the description block.
-  - Render at most 2 claims as compact cards with frame badge and truncated content.
+
+- Update the data fetch to use `getEntityPreviewWithClaims()` (from Step 2.2).
+- Add the "Key interpretations" subsection after the description block.
+- Render at most 2 claims as compact cards with frame badge and truncated content.
 
 ---
 
 ### Step 11 — URL Domain Management UI
 
 **11.1** Create `src/pages/admin/AdminUrlDomainsPage.tsx` or add a domain config section to an existing admin settings page.
-  - List table from `listUrlIngestionDomains()`.
-  - Add domain form wired to `createUrlIngestionDomain()`.
-  - Toggle enabled/disabled.
-  - Accessible only for `super_admin` role.
+
+- List table from `listUrlIngestionDomains()`.
+- Add domain form wired to `createUrlIngestionDomain()`.
+- Toggle enabled/disabled.
+- Accessible only for `super_admin` role.
 
 **11.2** Add route to admin router. Add link in admin navigation.
 

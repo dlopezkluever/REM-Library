@@ -8,18 +8,18 @@ This document is the remediation guide for the current Feature 4 and Feature 5 i
 
 ## Files Reviewed
 
-| File | Role |
-| --- | --- |
-| `supabase/functions/trigger-extraction/index.ts` | Claude extraction engine |
-| `supabase/functions/_shared/pipeline.ts` | Edge Function auth and pipeline helpers |
-| `supabase/functions/compute-confidence/index.ts` | Post-publish confidence recomputation |
-| `src/lib/api/admin.ts` | Admin API calls and review action writes |
-| `src/pages/admin/AdminReviewQueuePage.tsx` | Review queue source list |
-| `src/components/admin/ExtractionReviewPanel.tsx` | Review panel and five actions |
-| `src/pages/admin/AdminEntityManagerPage.tsx` | Entity publish/draft controls |
-| `src/pages/admin/AdminClaimManagerPage.tsx` | Claim admin placeholder |
-| `supabase/migrations/*.sql` | Enums, core tables, RLS, ingestion hardening |
-| `src/types/database.ts` | Generated database types |
+| File                                             | Role                                         |
+| ------------------------------------------------ | -------------------------------------------- |
+| `supabase/functions/trigger-extraction/index.ts` | Claude extraction engine                     |
+| `supabase/functions/_shared/pipeline.ts`         | Edge Function auth and pipeline helpers      |
+| `supabase/functions/compute-confidence/index.ts` | Post-publish confidence recomputation        |
+| `src/lib/api/admin.ts`                           | Admin API calls and review action writes     |
+| `src/pages/admin/AdminReviewQueuePage.tsx`       | Review queue source list                     |
+| `src/components/admin/ExtractionReviewPanel.tsx` | Review panel and five actions                |
+| `src/pages/admin/AdminEntityManagerPage.tsx`     | Entity publish/draft controls                |
+| `src/pages/admin/AdminClaimManagerPage.tsx`      | Claim admin placeholder                      |
+| `supabase/migrations/*.sql`                      | Enums, core tables, RLS, ingestion hardening |
+| `src/types/database.ts`                          | Generated database types                     |
 
 ## Executive Summary
 

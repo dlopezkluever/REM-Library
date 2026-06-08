@@ -1,4 +1,5 @@
 # Phase 1 — Source Safety & Admin Control
+
 ## Spec and Dev Plan
 
 **Document type:** Implementation planning document  
@@ -36,54 +37,54 @@ However, the system is currently unsafe for large-scale source ingestion because
 
 ### 2.1 Source & Pipeline Tables
 
-| Table | Key Columns | Notes |
-|---|---|---|
-| `public.sources` | `id`, `title`, `url`, `tier`, `format`, `pipeline_stage`, `file_path`, `authors text[]`, `publication_date`, `duration_seconds` | `tier` is `source_tier` enum (`primary`/`secondary`). No `UNIQUE` on `url`. Set once at `createAdminSource()`. |
-| `public.source_anchors` | `id`, `source_id`, `chunk_id`, `start_timestamp_sec`, `end_timestamp_sec` | Links a claim's evidence to a specific moment in a source. |
-| `public.claim_evidence` | `claim_id`, `source_anchor_id` | Join table: many-to-many between claims and source anchors. This is the primary provenance chain. |
-| `public.entity_source_anchors` | `entity_id`, `source_anchor_id`, `extraction_id` | Links entity creation back to the specific extraction and source anchor. |
-| `public.extractions` | `id`, `source_id`, `status`, `extraction_data jsonb` | Holds AI output per chunk. `status` transitions from `pending` to confirmed/rejected. |
-| `public.chunks` | `id`, `source_id`, `raw_text`, `start_sec`, `end_sec` | Immutable once created. No per-chunk accept/reject status. |
+| Table                          | Key Columns                                                                                                                     | Notes                                                                                                          |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `public.sources`               | `id`, `title`, `url`, `tier`, `format`, `pipeline_stage`, `file_path`, `authors text[]`, `publication_date`, `duration_seconds` | `tier` is `source_tier` enum (`primary`/`secondary`). No `UNIQUE` on `url`. Set once at `createAdminSource()`. |
+| `public.source_anchors`        | `id`, `source_id`, `chunk_id`, `start_timestamp_sec`, `end_timestamp_sec`                                                       | Links a claim's evidence to a specific moment in a source.                                                     |
+| `public.claim_evidence`        | `claim_id`, `source_anchor_id`                                                                                                  | Join table: many-to-many between claims and source anchors. This is the primary provenance chain.              |
+| `public.entity_source_anchors` | `entity_id`, `source_anchor_id`, `extraction_id`                                                                                | Links entity creation back to the specific extraction and source anchor.                                       |
+| `public.extractions`           | `id`, `source_id`, `status`, `extraction_data jsonb`                                                                            | Holds AI output per chunk. `status` transitions from `pending` to confirmed/rejected.                          |
+| `public.chunks`                | `id`, `source_id`, `raw_text`, `start_sec`, `end_sec`                                                                           | Immutable once created. No per-chunk accept/reject status.                                                     |
 
 ### 2.2 Entity & Claim Tables
 
-| Table | Key Columns | Notes |
-|---|---|---|
-| `public.entities` | `id`, `name`, `slug`, `type`, `description`, `confidence_score`, `confidence_override`, `status`, `position_x`, `position_y` | `confidence_override` column exists; no UI writes to it. `status` is `content_status` enum. |
-| `public.claims` | `id`, `statement`, `confidence_score`, `confidence_override`, `status`, `source_id` | Same — `confidence_override` exists, no UI. `disputed` is a valid `content_status` but unreachable via UI. |
-| `public.claim_entities` | `claim_id`, `entity_id` | Join table: claims to entities. |
-| `public.relationships` | `id`, `from_entity_id`, `to_entity_id`, `type`, `weight`, `claim_ids uuid[]` | No `status` column. No soft-delete path. Weight is not editable through any admin surface. |
+| Table                   | Key Columns                                                                                                                  | Notes                                                                                                      |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `public.entities`       | `id`, `name`, `slug`, `type`, `description`, `confidence_score`, `confidence_override`, `status`, `position_x`, `position_y` | `confidence_override` column exists; no UI writes to it. `status` is `content_status` enum.                |
+| `public.claims`         | `id`, `statement`, `confidence_score`, `confidence_override`, `status`, `source_id`                                          | Same — `confidence_override` exists, no UI. `disputed` is a valid `content_status` but unreachable via UI. |
+| `public.claim_entities` | `claim_id`, `entity_id`                                                                                                      | Join table: claims to entities.                                                                            |
+| `public.relationships`  | `id`, `from_entity_id`, `to_entity_id`, `type`, `weight`, `claim_ids uuid[]`                                                 | No `status` column. No soft-delete path. Weight is not editable through any admin surface.                 |
 
 ### 2.3 Relevant Migrations
 
-| File | What it contains |
-|---|---|
-| `supabase/migrations/20260523010000_enums.sql` | `content_status` enum (includes `disputed`, `archived`), `source_tier` enum, `admin_role` enum |
-| `supabase/migrations/20260523020000_core_tables.sql` | `entities` (line 17: `confidence_override`), `claims` (line 50: `confidence_override`), `relationships` (line 33: `weight`), `source_anchors`, `sources` |
-| `supabase/migrations/20260523040000_rls.sql` | `is_admin()` function, `relationships admin write` policy (lines 82–88) |
+| File                                                            | What it contains                                                                                                                                                         |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `supabase/migrations/20260523010000_enums.sql`                  | `content_status` enum (includes `disputed`, `archived`), `source_tier` enum, `admin_role` enum                                                                           |
+| `supabase/migrations/20260523020000_core_tables.sql`            | `entities` (line 17: `confidence_override`), `claims` (line 50: `confidence_override`), `relationships` (line 33: `weight`), `source_anchors`, `sources`                 |
+| `supabase/migrations/20260523040000_rls.sql`                    | `is_admin()` function, `relationships admin write` policy (lines 82–88)                                                                                                  |
 | `supabase/migrations/20260531130000_review_queue_hardening.sql` | `review_extraction_item()` (line 417), `update_claim_status()` (line 1058, blocks archiving at 1074–1076), `admin_audit_events` (line 36), `entity_source_anchors` table |
 
 ### 2.4 Relevant API Layer
 
-| File | Relevant function | Notes |
-|---|---|---|
-| `src/lib/api/admin.ts:484` | `createAdminSource()` | Inserts source with `tier` set once; no update path for tier. |
-| `src/lib/api/admin.ts:529` | `updateEntityTimelineDates()` | Only post-creation entity edit currently available. |
-| `src/lib/api/admin.ts:597` | `getPipelineRerunAction()` | Returns `disabledReason` for URL format sources. |
-| `src/lib/api/admin.ts:918` | `updateAdminEntityStatus()` | Status toggle only. |
-| `src/lib/api/admin.ts:1008` | `updateAdminClaimStatus()` | Calls `update_claim_status()` SQL function. |
-| `src/lib/api/admin.ts:1070` | `triggerConfidenceComputation()` | Triggers `compute-confidence` edge function. |
-| `src/lib/api/admin.ts:1135` | `adminSourceTitleExists()` | Title-only `ilike` dedup — no URL check. |
+| File                        | Relevant function                | Notes                                                         |
+| --------------------------- | -------------------------------- | ------------------------------------------------------------- |
+| `src/lib/api/admin.ts:484`  | `createAdminSource()`            | Inserts source with `tier` set once; no update path for tier. |
+| `src/lib/api/admin.ts:529`  | `updateEntityTimelineDates()`    | Only post-creation entity edit currently available.           |
+| `src/lib/api/admin.ts:597`  | `getPipelineRerunAction()`       | Returns `disabledReason` for URL format sources.              |
+| `src/lib/api/admin.ts:918`  | `updateAdminEntityStatus()`      | Status toggle only.                                           |
+| `src/lib/api/admin.ts:1008` | `updateAdminClaimStatus()`       | Calls `update_claim_status()` SQL function.                   |
+| `src/lib/api/admin.ts:1070` | `triggerConfidenceComputation()` | Triggers `compute-confidence` edge function.                  |
+| `src/lib/api/admin.ts:1135` | `adminSourceTitleExists()`       | Title-only `ilike` dedup — no URL check.                      |
 
 ### 2.5 Relevant UI Pages & Components
 
-| File | What it renders | What's missing |
-|---|---|---|
-| `src/pages/admin/AdminSourceNewPage.tsx` | Source creation form with tier selector | No tier edit on detail page |
-| `src/components/admin/ExtractionReviewPanel.tsx` | Per-item confirm/edit/reject/merge/split | No source impact view |
-| `src/pages/admin/AdminClaimManagerPage.tsx` | Claim list with status filter and publish toggle | `disputed` toggle disabled at line 261; no "Mark disputed" button |
-| `src/pages/admin/AdminEntityManagerPage.tsx` | Entity list with status toggle | No confidence override input |
-| `src/pages/admin/AdminSourceDetailPage.tsx` | Source detail (if it exists) | No tier edit dropdown |
+| File                                             | What it renders                                  | What's missing                                                    |
+| ------------------------------------------------ | ------------------------------------------------ | ----------------------------------------------------------------- |
+| `src/pages/admin/AdminSourceNewPage.tsx`         | Source creation form with tier selector          | No tier edit on detail page                                       |
+| `src/components/admin/ExtractionReviewPanel.tsx` | Per-item confirm/edit/reject/merge/split         | No source impact view                                             |
+| `src/pages/admin/AdminClaimManagerPage.tsx`      | Claim list with status filter and publish toggle | `disputed` toggle disabled at line 261; no "Mark disputed" button |
+| `src/pages/admin/AdminEntityManagerPage.tsx`     | Entity list with status toggle                   | No confidence override input                                      |
+| `src/pages/admin/AdminSourceDetailPage.tsx`      | Source detail (if it exists)                     | No tier edit dropdown                                             |
 
 ### 2.6 Confidence Formula (for context)
 
@@ -188,6 +189,7 @@ Nothing in the public-facing site changes. All Phase 1 work is admin-only.
 The page fetches two result sets using the source's `id`:
 
 **Set A — Claims from this source:**
+
 ```
 sources
   → source_anchors (where source_anchors.source_id = :id)
@@ -195,18 +197,22 @@ sources
   → claims (where claims.id = claim_evidence.claim_id)
   → claim_entities → entities (for entity names)
 ```
+
 Return columns: `claim.id`, `claim.statement`, `claim.status`, `claim.confidence_score`, entity names linked to claim.
 
 **Set B — Entities from this source:**
+
 ```
 sources
   → source_anchors (where source_anchors.source_id = :id)
   → entity_source_anchors (where entity_source_anchors.source_anchor_id = source_anchors.id)
   → entities (where entities.id = entity_source_anchors.entity_id)
 ```
+
 Return columns: `entity.id`, `entity.name`, `entity.type`, `entity.status`, `entity.confidence_score`.
 
 **Display:**
+
 - Section 1: "Entities (N)" — table of entities with status badge and a toggle to unpublish individually.
 - Section 2: "Claims (N)" — table of claims with status badge, confidence score, and linked entity names.
 - Bulk action bar at top: "Unpublish all claims (N)", "Mark all disputed (N)". Requires confirmation dialog before executing.
@@ -240,6 +246,7 @@ Return columns: `entity.id`, `entity.name`, `entity.type`, `entity.status`, `ent
 **Purpose:** Allow admins to manually set a display/ranking score on any entity or claim, bypassing the AI-computed value.
 
 **Schema:** Both columns already exist:
+
 - `public.entities.confidence_override numeric`
 - `public.claims.confidence_override numeric`
 
@@ -260,6 +267,7 @@ Same pattern for claims, calling `updateClaimConfidenceOverride(claimId, value)`
 **Purpose:** Make `disputed` and `archived` reachable content states through normal admin UI.
 
 **Current broken state:**
+
 - `AdminClaimManagerPage.tsx:261`: toggle `disabled` when `status === 'disputed'`
 - `update_claim_status()` SQL function (line 1074–1076): throws exception on `archived` target
 
@@ -270,6 +278,7 @@ On `AdminClaimManagerPage.tsx` and `AdminEntityManagerPage.tsx`, add a "Mark dis
 
 **4b. Fix `update_claim_status()` SQL function:**
 Remove the exception block that prevents `archived` as a target status. Add `disputed` as a valid target status. The valid transition map should be:
+
 - `pending → draft` (already works)
 - `draft → published` (already works)
 - `published → draft` (already works)
@@ -332,6 +341,7 @@ Update the existing `relationships` public read RLS policy to add `AND rel.statu
 **Page behavior:**
 
 Paginated table (50 rows per page) with columns:
+
 - From entity (linked to entity detail)
 - To entity (linked to entity detail)
 - Relationship type
@@ -367,6 +377,7 @@ CREATE UNIQUE INDEX sources_url_normalized_unique
 ```
 
 **Risk:** Check for existing duplicate URLs before applying. Run this query first:
+
 ```sql
 SELECT lower(regexp_replace(url, '/$', '')), count(*)
 FROM public.sources
@@ -374,6 +385,7 @@ WHERE url IS NOT NULL
 GROUP BY 1
 HAVING count(*) > 1;
 ```
+
 If any duplicates exist, resolve them (merge or delete the duplicates) before applying the migration.
 
 ---
@@ -511,6 +523,7 @@ export async function markSourceClaimsDisputed(sourceId: string): Promise<void>
 ```
 
 These operate on the result set of Query B above. They can be implemented as:
+
 1. Fetch all `claim_id`s from the impact query.
 2. Batch-call `update_claim_status()` RPC per claim (or a new batch version of the RPC).
 
@@ -523,11 +536,7 @@ export async function updateSourceTier(
   sourceId: string,
   tier: 'primary' | 'secondary'
 ): Promise<void> {
-  await supabase
-    .from('sources')
-    .update({ tier })
-    .eq('id', sourceId)
-    .throwOnError();
+  await supabase.from('sources').update({ tier }).eq('id', sourceId).throwOnError()
   // Log to admin_audit_events
 }
 ```
@@ -552,16 +561,16 @@ Both write to the existing `confidence_override` column. `null` clears the overr
 
 ```typescript
 export async function adminSourceUrlExists(url: string): Promise<{
-  exists: boolean;
-  existingSource?: { id: string; title: string };
+  exists: boolean
+  existingSource?: { id: string; title: string }
 }> {
-  const normalized = url.toLowerCase().replace(/\/$/, '');
+  const normalized = url.toLowerCase().replace(/\/$/, '')
   const { data } = await supabase
     .from('sources')
     .select('id, title')
     .ilike('url', normalized)
-    .maybeSingle();
-  return { exists: !!data, existingSource: data ?? undefined };
+    .maybeSingle()
+  return { exists: !!data, existingSource: data ?? undefined }
 }
 ```
 
@@ -569,10 +578,10 @@ export async function adminSourceUrlExists(url: string): Promise<{
 
 ```typescript
 export async function getAdminRelationships(opts: {
-  page: number;
-  pageSize: number;
-  status?: 'active' | 'archived';
-  search?: string;
+  page: number
+  pageSize: number
+  status?: 'active' | 'archived'
+  search?: string
 }): Promise<{ data: AdminRelationship[]; count: number }>
 
 export async function updateRelationshipWeight(
@@ -598,6 +607,7 @@ In `src/lib/api/claims.ts:77`, update the order clause:
 ```
 
 Or use a computed column approach:
+
 ```sql
 -- Alternative: use raw SQL via RPC if the ORM doesn't support COALESCE ordering
 ORDER BY COALESCE(confidence_override, confidence_score) DESC
@@ -610,6 +620,7 @@ ORDER BY COALESCE(confidence_override, confidence_score) DESC
 ### 9.1 Source Impact Page (`AdminSourceImpactPage.tsx`)
 
 **Layout:**
+
 ```
 [Back to source] Source: "[Title]" — Impact View
 
@@ -650,6 +661,7 @@ Confidence: 0.74 (computed)   Override: [0.85____] [Clear]
 ```
 
 When override is set, display:
+
 ```
 Confidence: 0.85 (override) ← 0.74 computed
 ```
@@ -663,15 +675,18 @@ On `AdminClaimManagerPage.tsx` and `AdminEntityManagerPage.tsx`, add alongside t
 ```
 
 Status badge colors:
+
 - `draft` → gray
 - `published` → green
 - `disputed` → amber/yellow
 - `archived` → red/muted
 
 When viewing a `disputed` item, show the toggle as:
+
 ```
 [Draft] [Publish] [← Disputed] [Archive]
 ```
+
 So the admin can move it back to draft or publish it.
 
 ### 9.5 Source Creation — URL Duplicate Warning
@@ -686,6 +701,7 @@ URL: [https://blog.example.com/article-1______________]
 ### 9.6 Relationship Manager (`AdminRelationshipManagerPage.tsx`)
 
 **Layout:**
+
 ```
 Relationships (1,247)   [Search entities...] [Type ▼] [Status ▼]
 
@@ -701,6 +717,7 @@ Relationships (1,247)   [Search entities...] [Type ▼] [Status ▼]
 ```
 
 Expandable row shows backing claims:
+
 ```
 ▼ Snake → Eden (appears_in)
   Backing claims:
@@ -721,14 +738,17 @@ Work items are ordered by dependency and risk. Items 1–3 are fully independent
 Apply all three migrations in sequence before any UI work begins. These are additive and non-breaking.
 
 **1a.** Apply `20260608010000_sources_url_unique.sql` (URL constraint).
+
 - Before applying: run the duplicate-URL detection query and confirm zero results.
 - After applying: verify with a test INSERT of a duplicate URL that it is rejected.
 
 **1b.** Apply `20260608020000_relationship_soft_delete.sql` (relationships schema + RLS fix).
+
 - After applying: verify existing relationships still appear in the public graph.
 - Verify the RLS policy update does not break the 2D or 3D graph canvas data fetch.
 
 **1c.** Apply `20260608030000_fix_claim_status_transitions.sql` (`update_claim_status()` fix).
+
 - After applying: test via Supabase SQL editor that `update_claim_status(some_claim_id, 'disputed')` succeeds.
 - Test that `update_claim_status(some_claim_id, 'archived')` now succeeds.
 - Test that existing `draft → published` and `published → draft` transitions still work.
@@ -896,6 +916,7 @@ This is the simplest UI change and unblocks editorial workflow immediately.
 Each Phase 1 item is complete when all of the following are true:
 
 **Source impact view:**
+
 - [ ] Given any `source_id`, the impact page displays all entities and claims downstream of that source with accurate status indicators.
 - [ ] "Unpublish all claims" transitions all displayed published claims to `draft` in a single operation.
 - [ ] "Mark all disputed" transitions all displayed published claims to `disputed`.
@@ -903,18 +924,21 @@ Each Phase 1 item is complete when all of the following are true:
 - [ ] Navigation from the source detail page to the impact page works.
 
 **Source tier editability:**
+
 - [ ] Admin can change a source's tier from `primary` to `secondary` or vice versa on the source detail page.
 - [ ] The change is persisted to the DB.
 - [ ] A recomputation prompt is offered after the change.
 - [ ] The change is logged in `admin_audit_events`.
 
 **Confidence override:**
+
 - [ ] Admin can enter a numeric value (0.0–1.0) for `confidence_override` on any entity or claim.
 - [ ] The override is persisted to the DB.
 - [ ] Claims with an override rank by the override value rather than the computed score on entity pages.
 - [ ] Clearing the override (empty input) sets the column to NULL and restores computed ranking.
 
 **Disputed status:**
+
 - [ ] "Mark disputed" button exists and works on claim and entity manager pages.
 - [ ] Claims and entities can transition: `draft → disputed`, `published → disputed`, `disputed → draft`, `disputed → published`, `any → archived`.
 - [ ] Disputed content shows an amber badge in admin UI.
@@ -922,11 +946,13 @@ Each Phase 1 item is complete when all of the following are true:
 - [ ] Archived claims are excluded from public queries.
 
 **URL deduplication:**
+
 - [ ] Submitting a source with a URL that matches an existing source (case-insensitive, trailing slash normalized) is blocked by the DB constraint.
 - [ ] The admin form shows a warning on URL field blur before submit.
 - [ ] A clear error message is shown on submit if the constraint fires.
 
 **Relationship management:**
+
 - [ ] `/admin/relationships` page exists and is accessible from the admin nav.
 - [ ] All relationships are listed with pagination.
 - [ ] Weight can be edited inline.
@@ -939,26 +965,32 @@ Each Phase 1 item is complete when all of the following are true:
 ## 13. Risks and Mitigations
 
 ### Risk 1 — Existing duplicate URLs before migration
+
 **Scenario:** Running the URL uniqueness migration fails because duplicate URLs already exist in `sources`.
 **Mitigation:** Run the duplicate detection query listed in Section 7, Schema Plan, before applying the migration. If duplicates exist, identify the correct canonical record and soft-delete or merge the others before applying the constraint.
 
 ### Risk 2 — Relationship RLS change breaks graph
+
 **Scenario:** The updated `relationships public read` policy (adding `status = 'active'`) causes a query error on the graph canvas if the ORM or query doesn't handle the new column correctly for rows that existed before the migration.
 **Mitigation:** All existing rows get `status = 'active'` from the `DEFAULT 'active'` clause. Test the graph canvas immediately after applying the migration in a staging environment. Verify the SQL policy references the column by its full table-qualified name (`relationships.status`) to avoid ambiguity.
 
 ### Risk 3 — Confidence recomputation after tier change is slow
+
 **Scenario:** A source has 200+ downstream entities. Triggering recomputation for all of them after a tier change is slow and may time out.
 **Mitigation:** For MVP, batch the recomputation calls with a small delay between batches (e.g., 10 at a time, 200ms apart). If this proves too slow, add a background job approach: queue a recomputation task and notify the admin when done rather than waiting inline. Do not block the tier change itself on recomputation success.
 
 ### Risk 4 — Bulk "Unpublish all" on a large source
+
 **Scenario:** A source has 500+ published claims. The bulk unpublish fires 500+ individual `update_claim_status()` calls.
 **Mitigation:** Implement `bulk_update_claim_status(claim_ids uuid[], new_status content_status)` as a SQL function that updates all rows in a single statement. This is safer and faster than individual calls and avoids partial-update states if the client disconnects mid-operation.
 
 ### Risk 5 — Archiving a claim that backs a relationship
+
 **Scenario:** An admin archives a claim, but that claim is in `relationships.claim_ids[]`. The relationship remains `active` but now has an archived backing claim, which creates an inconsistency.
 **Mitigation:** When archiving a claim, check if it appears in any `relationships.claim_ids`. If the relationship would have zero remaining non-archived claims after the archive, prompt the admin: "This is the only claim backing the relationship [Entity A → Entity B]. Archiving this claim will leave the relationship unsupported. Archive anyway?" Do not auto-archive the relationship — that should be an explicit admin action.
 
 ### Risk 6 — Override value persists after source or claim deletion
+
 **Scenario:** An admin sets `confidence_override = 0.9` on a claim, then later wants to understand why it ranks so high. The override is not visually obvious.
 **Mitigation:** Make the override visually distinct on the entity's public claim list (a small "(overridden)" label visible to admins when logged in). Ensure the admin manager always shows both the computed score and the override value side by side so the distinction is never ambiguous.
 
