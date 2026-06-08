@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase/client'
-import type { Enums, Json, Tables, TablesInsert } from '@/types/database'
+import type { Enums, Json, Tables, TablesInsert, TablesUpdate } from '@/types/database'
 
 export type AdminSourceRow = Tables<'sources'>
 export type EntityType = Enums<'entity_type'>
@@ -13,6 +13,8 @@ export type AdminEntityRow = Tables<'entities'>
 export type AdminClaimRow = Tables<'claims'>
 export type AdminExtractionRow = Tables<'extractions'>
 export type AdminChunkRow = Tables<'chunks'>
+export type AdminRelationshipRow = Tables<'relationships'>
+export type RelationshipStatus = 'active' | 'archived'
 
 export interface AdminDashboardCounts {
   publishedEntities: number
@@ -203,6 +205,51 @@ export interface AdminClaimPage {
   totalCount: number
 }
 
+export interface AdminSourceImpactClaim extends AdminClaimRow {
+  entityNames: string[]
+}
+
+export interface AdminSourceImpact {
+  claims: AdminSourceImpactClaim[]
+  entities: AdminEntityRow[]
+}
+
+export interface AdminRelationshipEntitySummary {
+  id: string
+  name: string
+  status: ContentStatus
+  type: EntityType
+}
+
+export interface AdminRelationshipClaimSummary {
+  confidence_override: number | null
+  confidence_score: number
+  id: string
+  statement: string
+  status: ContentStatus
+}
+
+export interface AdminRelationshipListRow extends AdminRelationshipRow {
+  backingClaims: AdminRelationshipClaimSummary[]
+  claimCount: number
+  fromEntity: AdminRelationshipEntitySummary | null
+  toEntity: AdminRelationshipEntitySummary | null
+}
+
+export interface AdminRelationshipPage {
+  page: number
+  pageSize: number
+  relationships: AdminRelationshipListRow[]
+  totalCount: number
+}
+
+export interface GetAdminRelationshipsOptions {
+  page?: number
+  pageSize?: number
+  search?: string
+  status?: RelationshipStatus | 'all' | null
+}
+
 const entityTypes: EntityType[] = ['symbol', 'figure', 'narrative', 'culture', 'trope']
 const contentStatuses: ContentStatus[] = ['draft', 'published', 'archived', 'disputed']
 const relationshipTypes: RelationshipType[] = [
@@ -224,10 +271,25 @@ const adminSourceMonitorLimit = 100
 const adminSourceListLimit = 100
 const adminEntityPageSize = 50
 const adminClaimPageSize = 50
+const adminRelationshipPageSize = 50
+const adminRelationshipMaxPageSize = 100
+const adminSourceUrlLookupPageSize = 1000
 const reviewQueuePageSize = 50
 const sourceFileBucket = 'source-files'
 
 const requireCount = (count: number | null) => count ?? 0
+
+const requireBoundedNumber = (value: number, label: string, min: number, max: number) => {
+  if (!Number.isFinite(value) || value < min || value > max) {
+    throw new Error(`${label} must be between ${min} and ${max}.`)
+  }
+}
+
+const requireNonNegativeNumber = (value: number, label: string) => {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error(`${label} must be a non-negative number.`)
+  }
+}
 
 const toCount = (value: unknown) => {
   if (typeof value === 'number') {
@@ -260,6 +322,10 @@ const toNullableTrimmedString = (value: unknown) => {
 }
 
 const normalizeName = (name: string) => name.trim().replace(/\s+/g, ' ')
+
+const uniqueIds = (values: string[]) => {
+  return Array.from(new Set(values.filter((value) => Boolean(value))))
+}
 
 const uniqueStrings = (values: string[]) => {
   const seen = new Set<string>()
@@ -481,6 +547,31 @@ export const deleteSourceFile = async (path: string) => {
   }
 }
 
+const getCurrentAdminUserId = async () => {
+  const { data } = await supabase.auth.getUser()
+
+  return data.user?.id ?? null
+}
+
+const insertAdminAuditEvent = async (
+  action: string,
+  targetTable: string,
+  targetId: string | null,
+  details: Json = {}
+) => {
+  const { error } = await supabase.from('admin_audit_events').insert({
+    action,
+    actor_id: await getCurrentAdminUserId(),
+    details,
+    target_id: targetId,
+    target_table: targetTable,
+  })
+
+  if (error) {
+    throw error
+  }
+}
+
 export const createAdminSource = async (input: CreateAdminSourceInput) => {
   const row: TablesInsert<'sources'> = {
     authors: input.authors,
@@ -677,6 +768,153 @@ export const getAdminSourceById = async (sourceId: string) => {
   if (error) {
     throw error
   }
+
+  return data
+}
+
+const getSourceAnchorIds = async (sourceId: string) => {
+  const { data, error } = await supabase
+    .from('source_anchors')
+    .select('id')
+    .eq('source_id', sourceId)
+
+  if (error) {
+    throw error
+  }
+
+  return data.map((anchor) => anchor.id)
+}
+
+const getSourceClaimIds = async (sourceId: string) => {
+  const anchorIds = await getSourceAnchorIds(sourceId)
+
+  if (anchorIds.length === 0) {
+    return []
+  }
+
+  const { data, error } = await supabase
+    .from('claim_evidence')
+    .select('claim_id')
+    .in('anchor_id', anchorIds)
+
+  if (error) {
+    throw error
+  }
+
+  return uniqueIds(data.map((evidenceLink) => evidenceLink.claim_id))
+}
+
+export const getSourceImpact = async (sourceId: string): Promise<AdminSourceImpact> => {
+  const anchorIds = await getSourceAnchorIds(sourceId)
+
+  if (anchorIds.length === 0) {
+    return { claims: [], entities: [] }
+  }
+
+  const [entityLinksResult, evidenceLinksResult] = await Promise.all([
+    supabase.from('entity_source_anchors').select('entity_id').in('anchor_id', anchorIds),
+    supabase.from('claim_evidence').select('claim_id').in('anchor_id', anchorIds),
+  ])
+
+  if (entityLinksResult.error) {
+    throw entityLinksResult.error
+  }
+
+  if (evidenceLinksResult.error) {
+    throw evidenceLinksResult.error
+  }
+
+  const entityIds = uniqueIds(entityLinksResult.data.map((entityLink) => entityLink.entity_id))
+  const claimIds = uniqueIds(evidenceLinksResult.data.map((evidenceLink) => evidenceLink.claim_id))
+
+  const [entitiesResult, claimsResult, claimEntityLinksResult] = await Promise.all([
+    entityIds.length > 0
+      ? supabase.from('entities').select('*').in('id', entityIds).order('name')
+      : Promise.resolve({ data: [] as AdminEntityRow[], error: null }),
+    claimIds.length > 0
+      ? supabase.from('claims').select('*').in('id', claimIds).order('updated_at', {
+          ascending: false,
+        })
+      : Promise.resolve({ data: [] as AdminClaimRow[], error: null }),
+    claimIds.length > 0
+      ? supabase.from('claim_entities').select('claim_id, entity_id').in('claim_id', claimIds)
+      : Promise.resolve({ data: [] as Array<{ claim_id: string; entity_id: string }>, error: null }),
+  ])
+
+  if (entitiesResult.error) {
+    throw entitiesResult.error
+  }
+
+  if (claimsResult.error) {
+    throw claimsResult.error
+  }
+
+  if (claimEntityLinksResult.error) {
+    throw claimEntityLinksResult.error
+  }
+
+  const claimEntityIds = uniqueIds(
+    claimEntityLinksResult.data.map((entityLink) => entityLink.entity_id)
+  )
+  const { data: claimEntities, error: claimEntitiesError } =
+    claimEntityIds.length > 0
+      ? await supabase.from('entities').select('id, name').in('id', claimEntityIds)
+      : { data: [] as Array<Pick<AdminEntityRow, 'id' | 'name'>>, error: null }
+
+  if (claimEntitiesError) {
+    throw claimEntitiesError
+  }
+
+  const entityNamesById = new Map(claimEntities.map((entity) => [entity.id, entity.name]))
+  const entityNamesByClaimId = new Map<string, string[]>()
+
+  claimEntityLinksResult.data.forEach((entityLink) => {
+    const entityName = entityNamesById.get(entityLink.entity_id)
+
+    if (!entityName) {
+      return
+    }
+
+    const names = entityNamesByClaimId.get(entityLink.claim_id) ?? []
+    names.push(entityName)
+    entityNamesByClaimId.set(entityLink.claim_id, names)
+  })
+
+  return {
+    claims: claimsResult.data.map((claim) => ({
+      ...claim,
+      entityNames: entityNamesByClaimId.get(claim.id) ?? [],
+    })),
+    entities: entitiesResult.data,
+  }
+}
+
+export const updateSourceTier = async (sourceId: string, tier: SourceTier) => {
+  const { data: currentSource, error: currentSourceError } = await supabase
+    .from('sources')
+    .select('tier')
+    .eq('id', sourceId)
+    .single()
+
+  if (currentSourceError) {
+    throw currentSourceError
+  }
+
+  const { data, error } = await supabase
+    .from('sources')
+    .update({ tier })
+    .eq('id', sourceId)
+    .select('*')
+    .single()
+
+  if (error) {
+    throw error
+  }
+
+  await insertAdminAuditEvent('update_source_tier', 'sources', sourceId, {
+    new_tier: tier,
+    old_tier: currentSource.tier,
+  })
 
   return data
 }
@@ -935,6 +1173,43 @@ export const updateAdminEntityStatus = async (entityId: string, status: ContentS
   return data
 }
 
+export const updateEntityConfidenceOverride = async (
+  entityId: string,
+  override: number | null
+) => {
+  if (override !== null) {
+    requireBoundedNumber(override, 'Entity confidence override', 0, 1)
+  }
+
+  const { data: currentEntity, error: currentEntityError } = await supabase
+    .from('entities')
+    .select('confidence_override')
+    .eq('id', entityId)
+    .single()
+
+  if (currentEntityError) {
+    throw currentEntityError
+  }
+
+  const { data, error } = await supabase
+    .from('entities')
+    .update({ confidence_override: override })
+    .eq('id', entityId)
+    .select('*')
+    .single()
+
+  if (error) {
+    throw error
+  }
+
+  await insertAdminAuditEvent('update_entity_confidence_override', 'entities', entityId, {
+    new_override: override,
+    old_override: currentEntity.confidence_override,
+  })
+
+  return data
+}
+
 export const publishAdminEntities = async (
   entityIds: string[]
 ): Promise<{ entities: AdminEntityRow[]; confidenceUpdateFailed: boolean }> => {
@@ -1005,7 +1280,7 @@ export const getAdminClaimsPage = async ({
   }
 }
 
-export const updateAdminClaimStatus = async (claimId: string, status: ContentStatus) => {
+const setAdminClaimStatus = async (claimId: string, status: ContentStatus) => {
   const { data: affectedEntityIds, error } = await supabase.rpc('update_claim_status', {
     claim_id: claimId,
     next_status: status,
@@ -1015,7 +1290,47 @@ export const updateAdminClaimStatus = async (claimId: string, status: ContentSta
     throw error
   }
 
+  return affectedEntityIds
+}
+
+export const updateAdminClaimStatus = async (claimId: string, status: ContentStatus) => {
+  const affectedEntityIds = await setAdminClaimStatus(claimId, status)
+
   await triggerConfidenceComputation(affectedEntityIds)
+}
+
+export const updateClaimConfidenceOverride = async (claimId: string, override: number | null) => {
+  if (override !== null) {
+    requireBoundedNumber(override, 'Claim confidence override', 0, 1)
+  }
+
+  const { data: currentClaim, error: currentClaimError } = await supabase
+    .from('claims')
+    .select('confidence_override')
+    .eq('id', claimId)
+    .single()
+
+  if (currentClaimError) {
+    throw currentClaimError
+  }
+
+  const { data, error } = await supabase
+    .from('claims')
+    .update({ confidence_override: override })
+    .eq('id', claimId)
+    .select('*')
+    .single()
+
+  if (error) {
+    throw error
+  }
+
+  await insertAdminAuditEvent('update_claim_confidence_override', 'claims', claimId, {
+    new_override: override,
+    old_override: currentClaim.confidence_override,
+  })
+
+  return data
 }
 
 export const publishAdminClaims = async (claimIds: string[]) => {
@@ -1034,6 +1349,232 @@ export const publishAdminClaims = async (claimIds: string[]) => {
   }
 
   await triggerConfidenceComputation(affectedEntityIds)
+}
+
+const updateSourceClaimsStatus = async (sourceId: string, status: ContentStatus) => {
+  const claimIds = await getSourceClaimIds(sourceId)
+
+  if (claimIds.length === 0) {
+    return { affectedEntityIds: [], claimIds: [] }
+  }
+
+  const affectedEntityIdGroups = await Promise.all(
+    claimIds.map((claimId) => setAdminClaimStatus(claimId, status))
+  )
+  const affectedEntityIds = uniqueIds(affectedEntityIdGroups.flat())
+
+  await triggerConfidenceComputation(affectedEntityIds)
+
+  return { affectedEntityIds, claimIds }
+}
+
+export const unpublishSourceClaims = async (sourceId: string) => {
+  return updateSourceClaimsStatus(sourceId, 'draft')
+}
+
+export const markSourceClaimsDisputed = async (sourceId: string) => {
+  return updateSourceClaimsStatus(sourceId, 'disputed')
+}
+
+const getRelationshipSearchEntityIds = async (search: string) => {
+  const query = search.trim()
+
+  if (!query) {
+    return []
+  }
+
+  const { data, error } = await supabase
+    .from('entities')
+    .select('id')
+    .ilike('name', `%${query}%`)
+    .limit(100)
+
+  if (error) {
+    throw error
+  }
+
+  return data.map((entity) => entity.id)
+}
+
+export const getAdminRelationships = async ({
+  page = 0,
+  pageSize = adminRelationshipPageSize,
+  search = '',
+  status = null,
+}: GetAdminRelationshipsOptions = {}): Promise<AdminRelationshipPage> => {
+  const resolvedPageSize = Math.max(
+    1,
+    Math.min(Math.floor(pageSize), adminRelationshipMaxPageSize)
+  )
+  const pageOffset = Math.max(0, page) * resolvedPageSize
+  const searchEntityIds = await getRelationshipSearchEntityIds(search)
+
+  if (search.trim() && searchEntityIds.length === 0) {
+    return {
+      page,
+      pageSize: resolvedPageSize,
+      relationships: [],
+      totalCount: 0,
+    }
+  }
+
+  let query = supabase
+    .from('relationships')
+    .select('*', { count: 'exact' })
+    .order('created_at', { ascending: false })
+    .range(pageOffset, pageOffset + resolvedPageSize - 1)
+
+  if (status && status !== 'all') {
+    query = query.eq('status', status)
+  }
+
+  if (searchEntityIds.length > 0) {
+    const entityFilter = searchEntityIds.join(',')
+    query = query.or(`from_entity_id.in.(${entityFilter}),to_entity_id.in.(${entityFilter})`)
+  }
+
+  const { data: relationships, error, count } = await query
+
+  if (error) {
+    throw error
+  }
+
+  const entityIds = uniqueIds(
+    relationships.flatMap((relationship) => [
+      relationship.from_entity_id,
+      relationship.to_entity_id,
+    ])
+  )
+  const claimIds = uniqueIds(relationships.flatMap((relationship) => relationship.claim_ids))
+
+  const [entitiesResult, claimsResult] = await Promise.all([
+    entityIds.length > 0
+      ? supabase.from('entities').select('id, name, status, type').in('id', entityIds)
+      : Promise.resolve({
+          data: [] as AdminRelationshipEntitySummary[],
+          error: null,
+        }),
+    claimIds.length > 0
+      ? supabase
+          .from('claims')
+          .select('id, statement, status, confidence_score, confidence_override')
+          .in('id', claimIds)
+      : Promise.resolve({
+          data: [] as AdminRelationshipClaimSummary[],
+          error: null,
+        }),
+  ])
+
+  if (entitiesResult.error) {
+    throw entitiesResult.error
+  }
+
+  if (claimsResult.error) {
+    throw claimsResult.error
+  }
+
+  const entitiesById = new Map(entitiesResult.data.map((entity) => [entity.id, entity]))
+  const claimsById = new Map(claimsResult.data.map((claim) => [claim.id, claim]))
+
+  return {
+    page,
+    pageSize: resolvedPageSize,
+    relationships: relationships.map((relationship) => {
+      const backingClaims = relationship.claim_ids.flatMap((claimId) => {
+        const claim = claimsById.get(claimId)
+
+        return claim ? [claim] : []
+      })
+
+      return {
+        ...relationship,
+        backingClaims,
+        claimCount: backingClaims.length,
+        fromEntity: entitiesById.get(relationship.from_entity_id) ?? null,
+        toEntity: entitiesById.get(relationship.to_entity_id) ?? null,
+      }
+    }),
+    totalCount: requireCount(count),
+  }
+}
+
+export const updateRelationshipWeight = async (relationshipId: string, weight: number) => {
+  requireNonNegativeNumber(weight, 'Relationship weight')
+
+  const { data: currentRelationship, error: currentRelationshipError } = await supabase
+    .from('relationships')
+    .select('weight')
+    .eq('id', relationshipId)
+    .single()
+
+  if (currentRelationshipError) {
+    throw currentRelationshipError
+  }
+
+  const { data, error } = await supabase
+    .from('relationships')
+    .update({ weight })
+    .eq('id', relationshipId)
+    .select('*')
+    .single()
+
+  if (error) {
+    throw error
+  }
+
+  await insertAdminAuditEvent('update_relationship_weight', 'relationships', relationshipId, {
+    new_weight: weight,
+    old_weight: currentRelationship.weight,
+  })
+
+  return data
+}
+
+const updateRelationshipStatus = async (
+  relationshipId: string,
+  values: TablesUpdate<'relationships'>,
+  action: string
+) => {
+  const { data, error } = await supabase
+    .from('relationships')
+    .update(values)
+    .eq('id', relationshipId)
+    .select('*')
+    .single()
+
+  if (error) {
+    throw error
+  }
+
+  await insertAdminAuditEvent(action, 'relationships', relationshipId, {
+    status: values.status ?? null,
+  })
+
+  return data
+}
+
+export const archiveRelationship = async (relationshipId: string) => {
+  return updateRelationshipStatus(
+    relationshipId,
+    {
+      archived_at: new Date().toISOString(),
+      archived_by: await getCurrentAdminUserId(),
+      status: 'archived',
+    },
+    'archive_relationship'
+  )
+}
+
+export const restoreRelationship = async (relationshipId: string) => {
+  return updateRelationshipStatus(
+    relationshipId,
+    {
+      archived_at: null,
+      archived_by: null,
+      status: 'active',
+    },
+    'restore_relationship'
+  )
 }
 
 export const updateAdminSourceStatus = async (sourceId: string, status: ContentStatus) => {
@@ -1143,6 +1684,42 @@ export const adminSourceTitleExists = async (title: string) => {
   }
 
   return requireCount(count) > 0
+}
+
+export const normalizeSourceUrl = (url: string) => {
+  return url.trim().replace(/\/$/, '').toLowerCase()
+}
+
+export const adminSourceUrlExists = async (url: string) => {
+  const normalizedUrl = normalizeSourceUrl(url)
+
+  if (!normalizedUrl) {
+    return false
+  }
+
+  let offset = 0
+
+  while (true) {
+    const { data, error } = await supabase
+      .from('sources')
+      .select('id, url')
+      .not('url', 'is', null)
+      .range(offset, offset + adminSourceUrlLookupPageSize - 1)
+
+    if (error) {
+      throw error
+    }
+
+    if (data.some((source) => source.url && normalizeSourceUrl(source.url) === normalizedUrl)) {
+      return true
+    }
+
+    if (data.length < adminSourceUrlLookupPageSize) {
+      return false
+    }
+
+    offset += adminSourceUrlLookupPageSize
+  }
 }
 
 const getSourceReviewStatus = (
