@@ -250,6 +250,12 @@ export interface GetAdminRelationshipsOptions {
   status?: RelationshipStatus | 'all' | null
 }
 
+export interface AdminSourceUrlDuplicate {
+  id: string
+  title: string
+  url: string | null
+}
+
 const entityTypes: EntityType[] = ['symbol', 'figure', 'narrative', 'culture', 'trope']
 const contentStatuses: ContentStatus[] = ['draft', 'published', 'archived', 'disputed']
 const relationshipTypes: RelationshipType[] = [
@@ -1690,11 +1696,11 @@ export const normalizeSourceUrl = (url: string) => {
   return url.trim().replace(/\/$/, '').toLowerCase()
 }
 
-export const adminSourceUrlExists = async (url: string) => {
+export const adminSourceUrlExists = async (url: string): Promise<AdminSourceUrlDuplicate | null> => {
   const normalizedUrl = normalizeSourceUrl(url)
 
   if (!normalizedUrl) {
-    return false
+    return null
   }
 
   let offset = 0
@@ -1702,7 +1708,7 @@ export const adminSourceUrlExists = async (url: string) => {
   while (true) {
     const { data, error } = await supabase
       .from('sources')
-      .select('id, url')
+      .select('id, title, url')
       .not('url', 'is', null)
       .range(offset, offset + adminSourceUrlLookupPageSize - 1)
 
@@ -1710,12 +1716,16 @@ export const adminSourceUrlExists = async (url: string) => {
       throw error
     }
 
-    if (data.some((source) => source.url && normalizeSourceUrl(source.url) === normalizedUrl)) {
-      return true
+    const duplicate = data.find(
+      (source) => source.url && normalizeSourceUrl(source.url) === normalizedUrl
+    )
+
+    if (duplicate) {
+      return duplicate
     }
 
     if (data.length < adminSourceUrlLookupPageSize) {
-      return false
+      return null
     }
 
     offset += adminSourceUrlLookupPageSize
