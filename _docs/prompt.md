@@ -423,3 +423,141 @@ The graph should represent curated REM theory knowledge, with source-grounded cl
 ---
 
 My recommendation: run this prompt before building Phase 7. It will force the agent to tell you whether the current system is safe to ingest real material into. The biggest thing you’re trying to prevent is exactly what you identified: uploading one huge source and then realizing it sprayed half-wrong claims all over the graph with no easy cleanup path; but it's all crucial.
+
+
+---
+
+I want you to implement only the next logical slice of the Phase 1 dev plan, not the entire document.
+
+Scope for this session:
+[PASTE SESSION SCOPE HERE, e.g. “Step 1 only: Database migrations”]
+
+Rules:
+
+* Do not implement later steps.
+* First inspect the existing files and confirm the current structure.
+* Make the smallest clean changes needed for this slice.
+* Preserve existing patterns, naming, Supabase conventions, routing style, and UI conventions.
+* After implementation, summarize:
+
+  1. Files changed
+  2. What was implemented
+  3. How to test it manually
+  4. Any risks or follow-up work
+* Do not mark unrelated TODOs as complete.
+* If something in the plan conflicts with the current codebase, stop and explain the mismatch before inventing a new architecture.
+
+Source document:
+[PASTE THE RELEVANT STEP(S) FROM THE DEV PLAN HERE]
+
+
+
+with regard to the following plan doc:
+
+Only implement this section:
+
+
+Rules:
+
+* Do not implement later steps.
+* First inspect the existing files and confirm the current structure.
+* Make the smallest clean changes needed for this slice.
+* Preserve existing patterns, naming, Supabase conventions, routing style, and UI conventions.
+* After implementation, summarize:
+
+  1. Files changed
+  2. What was implemented
+  3. How to test it manually
+  4. Any risks or follow-up work
+* Do not mark unrelated TODOs as complete.
+* If something in the plan conflicts with the current codebase, stop and explain the mismatch before inventing a new architecture.
+
+
+# ARG 34
+
+ with regard to the plan doc: 'c:/Users/Daniel Lopez/Desktop/Alexandria/RemLib/_docs/phase-1-source-safety-and-admin-control-spec-dev-plan.md' for this session only focus on:
+
+Do:
+quick admin workflow fixes
+Do:
+
+Step 3: disputed/archive buttons
+Step 4: confidence override UI
+  Rules:
+
+  * Do not implement later steps.
+  * First inspect the existing files and confirm the current structure.
+  * Make the smallest clean changes needed for this slice.
+  * Preserve existing patterns, naming, Supabase conventions, routing style, and UI conventions.
+  * After implementation, summarize:
+
+    1. Files changed
+    2. What was implemented
+    3. How to test it manually
+    4. Any risks or follow-up work
+  * Do not mark unrelated TODOs as complete.
+
+
+
+To be clear, these be the steps u doing:
+
+
+# ARG
+
+ with regard to the plan doc: 'c:/Users/Daniel Lopez/Desktop/Alexandria/RemLib/_docs/phase-1-source-safety-and-admin-control-spec-dev-plan.md' for this session only focus on: ""source admin controls
+Do:
+
+Step 5: source tier edit
+Step 6: source impact page
+
+These belong together because tier recompute uses source impact data.
+  Rules:
+
+  * Do not implement later steps.
+  * First inspect the existing files and confirm the current structure.
+  * Make the smallest clean changes needed for this slice.
+  * Preserve existing patterns, naming, Supabase conventions, routing style, and UI conventions.
+  * After implementation, summarize:
+
+    1. Files changed
+    2. What was implemented
+    3. How to test it manually
+    4. Any risks or follow-up work
+  * Do not mark unrelated TODOs as complete.
+  * If something in the plan conflicts with the current codebase, stop and explain the mismatch before inventing a new architecture.
+
+To be clear, these be the steps u doing:
+"""
+### Step 3 — Disputed status UI fix (Day 2)
+
+This is the simplest UI change and unblocks editorial workflow immediately.
+
+**3a.** `AdminClaimManagerPage.tsx:261`: Remove the `disabled` condition for `disputed`. Change the toggle behavior so that `disputed → draft` and `disputed → published` are valid transitions via the existing toggle.
+
+**3b.** Add "Mark disputed" button per claim row. Wire to `updateAdminClaimStatus(id, 'disputed')`.
+
+**3c.** Add "Archive" button per claim row. Wire to `updateAdminClaimStatus(id, 'archived')`. Show a confirmation dialog: "Archive this claim? It will no longer appear publicly and cannot be easily restored."
+
+**3d.** Add status badge color for `disputed` (amber) and `archived` (muted red).
+
+**3e.** Repeat 3b–3d for `AdminEntityManagerPage.tsx`.
+
+**3f.** Test: mark a draft claim as disputed → confirm amber badge appears. Then mark it published → confirm green badge. Then archive it → confirm it disappears from the published filter.
+
+---
+
+### Step 4 — Confidence override UI (Day 2–3)
+
+**4a.** Decide UI pattern: inline input on table row vs. row expansion panel. Given that the managers are table-based, recommend a compact inline approach: a small text input in a "Score" column that shows `0.74 (auto)` normally and becomes editable on click.
+
+**4b.** `AdminEntityManagerPage.tsx`: Add override input. On blur with valid value, call `updateEntityConfidenceOverride()`. On blur with empty value, call with `null`. Show loading state during save. Show success/error inline.
+
+**4c.** `AdminClaimManagerPage.tsx`: Same pattern.
+
+**4d.** Test: set an override on a claim. Navigate to the entity's public page. Confirm the claim appears in the correct position (overridden score used for ranking).
+
+**4e.** Test: clear the override. Confirm the claim returns to AI-computed rank position.
+
+---
+
+"""
