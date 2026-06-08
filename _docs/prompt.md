@@ -501,32 +501,6 @@ Step 4: confidence override UI
 
 To be clear, these be the steps u doing:
 
-
-# ARG
-
- with regard to the plan doc: 'c:/Users/Daniel Lopez/Desktop/Alexandria/RemLib/_docs/phase-1-source-safety-and-admin-control-spec-dev-plan.md' for this session only focus on: ""source admin controls
-Do:
-
-Step 5: source tier edit
-Step 6: source impact page
-
-These belong together because tier recompute uses source impact data.
-  Rules:
-
-  * Do not implement later steps.
-  * First inspect the existing files and confirm the current structure.
-  * Make the smallest clean changes needed for this slice.
-  * Preserve existing patterns, naming, Supabase conventions, routing style, and UI conventions.
-  * After implementation, summarize:
-
-    1. Files changed
-    2. What was implemented
-    3. How to test it manually
-    4. Any risks or follow-up work
-  * Do not mark unrelated TODOs as complete.
-  * If something in the plan conflicts with the current codebase, stop and explain the mismatch before inventing a new architecture.
-
-To be clear, these be the steps u doing:
 """
 ### Step 3 — Disputed status UI fix (Day 2)
 
@@ -559,5 +533,135 @@ This is the simplest UI change and unblocks editorial workflow immediately.
 **4e.** Test: clear the override. Confirm the claim returns to AI-computed rank position.
 
 ---
+
+"""
+
+
+# ARG
+
+ with regard to the plan doc: 'c:/Users/Daniel Lopez/Desktop/Alexandria/RemLib/_docs/phase-1-source-safety-and-admin-control-spec-dev-plan.md' for this session only focus on: ""source admin controls
+Do:
+
+Step 5: source tier edit
+Step 6: source impact page
+
+These belong together because tier recompute uses source impact data.
+  Rules:
+
+  * Do not implement later steps.
+  * First inspect the existing files and confirm the current structure.
+  * Make the smallest clean changes needed for this slice.
+  * Preserve existing patterns, naming, Supabase conventions, routing style, and UI conventions.
+  * After implementation, summarize:
+
+    1. Files changed
+    2. What was implemented
+    3. How to test it manually
+    4. Any risks or follow-up work
+  * Do not mark unrelated TODOs as complete.
+  * If something in the plan conflicts with the current codebase, stop and explain the mismatch before inventing a new architecture.
+
+To be clear, these be the steps u doing:
+
+"""
+
+
+### Step 5 — Source tier editability (Day 3)
+
+**5a.** Locate `AdminSourceDetailPage.tsx` (or identify where source detail is rendered — it may be a modal or panel rather than a full page).
+
+**5b.** Replace the static tier text with a `<select>` containing "Primary" and "Secondary" options. Set initial value from `source.tier`.
+
+**5c.** On change event, call `updateSourceTier(sourceId, newTier)`. Show loading state on the select. Show success/error inline.
+
+**5d.** After successful tier update: show a prompt "Would you like to recompute confidence scores for entities affected by this source? (N entities)" with Yes/No. If Yes, fetch the impacted entity IDs via `getSourceImpact()` and call `triggerConfidenceComputation()` for each.
+
+**5e.** Test: change a source from primary to secondary. Verify the confidence scores of downstream entities reflect the change after recomputation.
+
+---
+
+### Step 6 — Source impact view (Day 3–4)
+
+**6a.** Create `src/pages/admin/AdminSourceImpactPage.tsx`.
+
+**6b.** Add route to the router: `/admin/sources/:id/impact`.
+
+**6c.** Implement data fetching using `getSourceImpact(sourceId)`. Show loading skeleton while fetching.
+
+**6d.** Render the entities table (Section 1) with status badges and individual Unpublish/Publish actions.
+
+**6e.** Render the claims table (Section 2) with status badges, confidence scores, linked entity names, and individual Unpublish/Mark Disputed actions.
+
+**6f.** Implement bulk action bar: "Unpublish all claims (N)" and "Mark all disputed (N)" buttons. Both require a confirmation modal.
+
+**6g.** Add navigation entry point: on the source detail page (wherever the tier dropdown from Step 5 lives), add a prominent "View impact →" button/link.
+
+**6h.** Add a secondary "Impact" link in the source manager table row actions (if the table has an actions column).
+
+**6i.** Test with a known source that has 5+ published claims. Verify all expected claims and entities appear. Test "Unpublish all" and confirm claims go to draft.
+
+"""
+
+ with regard to the plan doc: 'c:/Users/Daniel Lopez/Desktop/Alexandria/RemLib/_docs/phase-1-source-safety-and-admin-control-spec-dev-plan.md' for this session only focus on: ""
+ingestion protection + relationships
+Do:
+
+Step 7: URL duplicate warning
+Step 8: relationship management page""
+  Rules:
+
+  * Do not implement later steps.
+  * First inspect the existing files and confirm the current structure.
+  * Make the smallest clean changes needed for this slice.
+  * Preserve existing patterns, naming, Supabase conventions, routing style, and UI conventions.
+  * After implementation, summarize:
+
+    1. Files changed
+    2. What was implemented
+    3. How to test it manually
+    4. Any risks or follow-up work
+  * Do not mark unrelated TODOs as complete.
+  * If something in the plan conflicts with the current codebase, stop and explain the mismatch before inventing a new architecture.
+
+To be clear, these be the steps u doing:
+
+"""
+
+
+### Step 7 — URL duplicate detection in form (Day 4)
+
+**7a.** `AdminSourceNewPage.tsx`: add an `onBlur` handler to the URL field that calls `adminSourceUrlExists(url)`.
+
+**7b.** If a duplicate is found, render an inline warning below the URL field: "⚠ A source with this URL already exists: [title] → View source". The form can still be submitted (the DB constraint is the hard stop), but the warning should be prominent enough to prevent accidental duplicates.
+
+**7c.** On form submit, if the Supabase INSERT fails with a unique constraint violation error, catch it and display: "This URL already exists in the source library. Please check the existing source before adding a new one."
+
+**7d.** Test: submit a source with the URL of an existing source. Confirm the warning appears on blur and the submit fails with a clear error message.
+
+---
+
+### Step 8 — Relationship management page (Day 4–5)
+
+**8a.** Create `src/pages/admin/AdminRelationshipManagerPage.tsx`.
+
+**8b.** Add route: `/admin/relationships`.
+
+**8c.** Add "Relationships" entry to the admin sidebar navigation.
+
+**8d.** Implement paginated data fetch using `getAdminRelationships()`. Show count in page header.
+
+**8e.** Render table with columns: From Entity, To Entity, Type, Weight (editable), Claim Count (expandable), Status, Actions.
+
+**8f.** Implement inline weight editing (blur to save).
+
+**8g.** Implement expandable row showing backing claims list with links.
+
+**8h.** Implement Archive button per row with confirmation dialog. Wire to `archiveRelationship()`.
+
+**8i.** Implement Restore button for archived rows. Wire to `restoreRelationship()`.
+
+**8j.** Add status filter (Active / Archived / All) and entity name search.
+
+**8k.** Test: archive a relationship. Confirm it no longer appears in the public graph (2D and 3D canvas). Restore it. Confirm it reappears.
 
 """
