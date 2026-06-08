@@ -1,12 +1,13 @@
 import { useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Check, FileUp, LinkIcon, Loader2, Upload, X } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Check, FileUp, LinkIcon, Loader2, Upload, X } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ROUTES } from '@/constants/routes'
 import {
+  adminSourceUrlExists,
   adminSourceTitleExists,
   createAdminSource,
   deleteSourceFile,
@@ -16,6 +17,7 @@ import {
   type SourceFormat,
   type SourceTier,
   type SourceUploadProgress,
+  type AdminSourceUrlDuplicate,
 } from '@/lib/api/admin'
 import {
   createClientUuid,
@@ -59,6 +61,26 @@ const getErrorMessage = (error: unknown) => {
   return 'The source could not be submitted.'
 }
 
+const duplicateSourceUrlMessage =
+  'This URL already exists in the source library. Please check the existing source before adding a new one.'
+
+const isSourceUrlUniqueConstraintError = (error: unknown) => {
+  if (!error || typeof error !== 'object') {
+    return false
+  }
+
+  const record = error as Record<string, unknown>
+  const fields = [record.code, record.message, record.details, record.hint]
+
+  return fields.some(
+    (field) =>
+      typeof field === 'string' &&
+      (field.includes('23505') ||
+        field.includes('sources_url_normalized_unique') ||
+        field.toLowerCase().includes('unique'))
+  )
+}
+
 export default function AdminSourceNewPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -76,6 +98,9 @@ export default function AdminSourceNewPage() {
   const [tier, setTier] = useState<SourceTier>('primary')
   const [uploadProgress, setUploadProgress] = useState<SourceUploadProgress | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [duplicateUrlSource, setDuplicateUrlSource] = useState<AdminSourceUrlDuplicate | null>(null)
+  const [urlDuplicateError, setUrlDuplicateError] = useState<string | null>(null)
+  const [isCheckingUrlDuplicate, setIsCheckingUrlDuplicate] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const titleQueryValue = title.trim()
   const duplicateTitleQuery = useQuery({
@@ -130,7 +155,38 @@ export default function AdminSourceNewPage() {
   const handleInputTypeChange = (nextInputType: SourceInputType) => {
     setInputType(nextInputType)
     setFormat(nextInputType === 'url' ? 'url' : file ? detectSourceFormat(file.name) : 'audio')
+    setDuplicateUrlSource(null)
+    setUrlDuplicateError(null)
     setError(null)
+  }
+
+  const handleSourceUrlBlur = async () => {
+    const trimmedUrl = sourceUrl.trim()
+
+    setDuplicateUrlSource(null)
+    setUrlDuplicateError(null)
+
+    if (!trimmedUrl) {
+      return
+    }
+
+    let normalizedUrl: string
+
+    try {
+      normalizedUrl = normalizeSourceUrl(trimmedUrl)
+    } catch {
+      return
+    }
+
+    setIsCheckingUrlDuplicate(true)
+
+    try {
+      setDuplicateUrlSource(await adminSourceUrlExists(normalizedUrl))
+    } catch (lookupError) {
+      setUrlDuplicateError(getErrorMessage(lookupError))
+    } finally {
+      setIsCheckingUrlDuplicate(false)
+    }
   }
 
   const validateForm = () => {
@@ -246,7 +302,11 @@ export default function AdminSourceNewPage() {
       }
 
       setUploadProgress(null)
-      setError(getErrorMessage(submitError))
+      setError(
+        inputType === 'url' && isSourceUrlUniqueConstraintError(submitError)
+          ? duplicateSourceUrlMessage
+          : getErrorMessage(submitError)
+      )
       setIsSubmitting(false)
     }
   }
@@ -399,8 +459,41 @@ export default function AdminSourceNewPage() {
                       placeholder="https://example.com/source"
                       type="url"
                       value={sourceUrl}
-                      onChange={(event) => setSourceUrl(event.target.value)}
+                      onBlur={() => void handleSourceUrlBlur()}
+                      onChange={(event) => {
+                        setSourceUrl(event.target.value)
+                        setDuplicateUrlSource(null)
+                        setUrlDuplicateError(null)
+                      }}
                     />
+                    {isCheckingUrlDuplicate ? (
+                      <p className="mt-2 font-body text-xs text-[#777]">
+                        Checking for an existing source...
+                      </p>
+                    ) : null}
+                    {duplicateUrlSource ? (
+                      <div className="mt-2 flex items-start gap-2 rounded border border-amber-300/70 bg-amber-50 p-3">
+                        <AlertTriangle
+                          aria-hidden="true"
+                          className="mt-0.5 h-4 w-4 shrink-0 text-amber-600"
+                        />
+                        <p className="font-body text-xs leading-meta text-amber-900">
+                          A source with this URL already exists:{' '}
+                          <span className="font-semibold">{duplicateUrlSource.title}</span>{' '}
+                          <Link
+                            className="font-semibold text-amber-900 underline underline-offset-2 hover:text-ink"
+                            to={`/admin/sources/${duplicateUrlSource.id}`}
+                          >
+                            View source
+                          </Link>
+                        </p>
+                      </div>
+                    ) : null}
+                    {urlDuplicateError ? (
+                      <p className="mt-2 font-body text-xs text-terracotta-dark">
+                        {urlDuplicateError}
+                      </p>
+                    ) : null}
                     <p className="mt-2 font-body text-xs text-[#777]">
                       URL sources are saved now. Automatic URL ingestion will be enabled after the
                       URL pipeline is defined.

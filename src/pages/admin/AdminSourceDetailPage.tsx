@@ -22,12 +22,16 @@ import {
 import { ROUTES } from '@/constants/routes'
 import {
   archiveAdminSource,
+  getSourceImpact,
   getPipelineRerunAction,
   getAdminSourceById,
   rerunSourcePipelineStage,
   restoreAdminSource,
   subscribeToSourceUpdates,
+  triggerConfidenceComputation,
   updateAdminSourceStatus,
+  updateSourceTier,
+  type SourceTier,
 } from '@/lib/api/admin'
 import { cn } from '@/lib/utils'
 
@@ -58,6 +62,9 @@ export default function AdminSourceDetailPage() {
     routeState?.triggerError ?? routeState?.triggerWarning ?? null
   )
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false)
+  const [tierMessage, setTierMessage] = useState<string | null>(null)
+  const [recomputeDialogOpen, setRecomputeDialogOpen] = useState(false)
+  const [impactedEntityIds, setImpactedEntityIds] = useState<string[]>([])
 
   const sourceQuery = useQuery({
     enabled: Boolean(id),
@@ -119,6 +126,53 @@ export default function AdminSourceDetailPage() {
     },
   })
 
+  const tierMutation = useMutation({
+    mutationFn: async (tier: SourceTier) => {
+      if (!source) {
+        throw new Error('Source is not loaded yet.')
+      }
+
+      const updatedSource = await updateSourceTier(source.id, tier)
+      const impact = await getSourceImpact(source.id)
+
+      return {
+        impactedEntityIds: impact.entities.map((entity) => entity.id),
+        source: updatedSource,
+      }
+    },
+    onMutate: () => {
+      setTierMessage(null)
+    },
+    onSuccess: async (result) => {
+      queryClient.setQueryData(sourceQueryKey, result.source)
+      setImpactedEntityIds(result.impactedEntityIds)
+      setTierMessage('Source tier updated.')
+      setRecomputeDialogOpen(true)
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'source-list'] })
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'sources'] })
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'source-impact', source?.id] })
+    },
+    onError: (error) => {
+      setTierMessage(getErrorMessage(error))
+    },
+  })
+
+  const recomputeMutation = useMutation({
+    mutationFn: async (entityIds: string[]) => {
+      await Promise.all(entityIds.map((entityId) => triggerConfidenceComputation([entityId])))
+    },
+    onSuccess: async () => {
+      setTierMessage('Confidence recomputation started for affected entities.')
+      setRecomputeDialogOpen(false)
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'entities'] })
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'claims'] })
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'content-stats'] })
+    },
+    onError: (error) => {
+      setTierMessage(getErrorMessage(error))
+    },
+  })
+
   useEffect(() => {
     if (!id) {
       return undefined
@@ -137,7 +191,12 @@ export default function AdminSourceDetailPage() {
     : null
   const activeStageIndex = currentStage ? pipelineOrder.indexOf(currentStage) : -1
   const actionError =
-    archiveMutation.error ?? rerunMutation.error ?? restoreMutation.error ?? statusMutation.error
+    archiveMutation.error ??
+    rerunMutation.error ??
+    restoreMutation.error ??
+    statusMutation.error ??
+    tierMutation.error ??
+    recomputeMutation.error
   const rerunAction = source ? getPipelineRerunAction(source.pipeline_stage, source) : null
 
   const visibleRouteWarning =
@@ -277,7 +336,44 @@ export default function AdminSourceDetailPage() {
                   value={source.publication_date ?? 'Not provided'}
                 />
                 <MetadataRow label="Format" value={formatLabels[source.format]} />
-                <MetadataRow label="Tier" value={source.tier === 'primary' ? 'Tier 1' : 'Tier 2'} />
+                <MetadataRow
+                  label="Tier"
+                  value={
+                    <div className="space-y-2">
+                      <select
+                        aria-label="Source tier"
+                        className="h-9 w-full max-w-[220px] rounded border border-0.5 border-black/15 bg-stone px-3 font-body text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-verdigris disabled:opacity-60"
+                        disabled={tierMutation.isPending}
+                        value={source.tier}
+                        onChange={(event) => {
+                          const nextTier = event.target.value as SourceTier
+
+                          if (nextTier !== source.tier) {
+                            tierMutation.mutate(nextTier)
+                          }
+                        }}
+                      >
+                        <option value="primary">Primary</option>
+                        <option value="secondary">Secondary</option>
+                      </select>
+                      {tierMutation.isPending ? (
+                        <p className="font-body text-xs text-[#777]">Saving tier...</p>
+                      ) : null}
+                      {tierMessage ? (
+                        <p
+                          className={cn(
+                            'font-body text-xs',
+                            tierMutation.isError || recomputeMutation.isError
+                              ? 'text-terracotta-dark'
+                              : 'text-verdigris-dark'
+                          )}
+                        >
+                          {tierMessage}
+                        </p>
+                      ) : null}
+                    </div>
+                  }
+                />
                 <MetadataRow label="Status" value={source.status} />
                 <MetadataRow
                   label="Location"
@@ -303,6 +399,9 @@ export default function AdminSourceDetailPage() {
             <aside className="rounded border border-0.5 border-black/[0.09] bg-white p-5">
               <h2 className="font-display text-sm uppercase tracking-label text-ink">Actions</h2>
               <div className="mt-4 space-y-3">
+                <Button asChild className="w-full">
+                  <Link to={`/admin/sources/${source.id}/impact`}>View impact</Link>
+                </Button>
                 <Button
                   className="w-full"
                   disabled={rerunMutation.isPending || Boolean(rerunAction?.disabledReason)}
@@ -391,6 +490,43 @@ export default function AdminSourceDetailPage() {
                 >
                   <Archive aria-hidden="true" className="h-4 w-4" />
                   Archive
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={recomputeDialogOpen} onOpenChange={setRecomputeDialogOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Recompute Confidence</DialogTitle>
+                <DialogDescription>
+                  Would you like to recompute confidence scores for entities affected by this
+                  source? ({impactedEntityIds.length} entities)
+                </DialogDescription>
+              </DialogHeader>
+              <div className="mt-5 flex justify-end gap-3">
+                <DialogClose asChild>
+                  <Button
+                    disabled={recomputeMutation.isPending}
+                    type="button"
+                    variant="outline"
+                    onClick={() =>
+                      setTierMessage('Source tier updated. Confidence recompute skipped.')
+                    }
+                  >
+                    No
+                  </Button>
+                </DialogClose>
+                <Button
+                  disabled={recomputeMutation.isPending || impactedEntityIds.length === 0}
+                  type="button"
+                  onClick={() => recomputeMutation.mutate(impactedEntityIds)}
+                >
+                  <RefreshCw
+                    aria-hidden="true"
+                    className={cn('h-4 w-4', recomputeMutation.isPending && 'animate-spin')}
+                  />
+                  Yes
                 </Button>
               </div>
             </DialogContent>
