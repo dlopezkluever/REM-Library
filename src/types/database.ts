@@ -478,28 +478,37 @@ export type Database = {
       }
       relationships: {
         Row: {
+          archived_at: string | null
+          archived_by: string | null
           claim_ids: string[]
           created_at: string
           from_entity_id: string
           id: string
+          status: 'active' | 'archived'
           to_entity_id: string
           type: Database['public']['Enums']['relationship_type']
           weight: number
         }
         Insert: {
+          archived_at?: string | null
+          archived_by?: string | null
           claim_ids?: string[]
           created_at?: string
           from_entity_id: string
           id?: string
+          status?: 'active' | 'archived'
           to_entity_id: string
           type: Database['public']['Enums']['relationship_type']
           weight?: number
         }
         Update: {
+          archived_at?: string | null
+          archived_by?: string | null
           claim_ids?: string[]
           created_at?: string
           from_entity_id?: string
           id?: string
+          status?: 'active' | 'archived'
           to_entity_id?: string
           type?: Database['public']['Enums']['relationship_type']
           weight?: number
@@ -510,6 +519,13 @@ export type Database = {
             columns: ['from_entity_id']
             isOneToOne: false
             referencedRelation: 'entities'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'relationships_archived_by_fkey'
+            columns: ['archived_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
             referencedColumns: ['id']
           },
           {
