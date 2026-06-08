@@ -9,6 +9,7 @@ import {
   RefreshCw,
   Search,
 } from 'lucide-react'
+import { ConfidenceOverrideInput } from '@/components/admin/ConfidenceOverrideInput'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -28,6 +29,7 @@ import {
   publishAdminEntities,
   triggerConfidenceComputation,
   updateAdminEntityStatus,
+  updateEntityConfidenceOverride,
   updateEntityTimelineDates,
   type AdminEntityRow,
   type ContentStatus,
@@ -41,11 +43,14 @@ const TIMELINE_ENTITY_TYPES = new Set(['narrative', 'figure'])
 const adminEntitiesQueryKey = ['admin', 'entities'] as const
 
 const statusClassNames: Record<ContentStatus, string> = {
-  archived: 'border-black/15 bg-stone text-[#777]',
-  disputed: 'border-terracotta/30 bg-terracotta-light text-terracotta-dark',
+  archived: 'border-terracotta/25 bg-terracotta-light text-terracotta-dark',
+  disputed: 'border-amber-300/70 bg-amber-50 text-amber-800',
   draft: 'border-iris/30 bg-iris-light text-iris-dark',
   published: 'border-verdigris bg-verdigris-light text-verdigris-dark',
 }
+
+const ARCHIVE_ENTITY_CONFIRMATION =
+  'Archive this entity? It will no longer appear publicly and cannot be easily restored.'
 
 const getMutationError = (error: unknown) => {
   if (error instanceof Error) {
@@ -96,6 +101,18 @@ export default function AdminEntityManagerPage() {
   const retryConfidenceMutation = useMutation({
     mutationFn: triggerConfidenceComputation,
     onSuccess: () => setFailedConfidenceIds([]),
+  })
+
+  const confidenceOverrideMutation = useMutation({
+    mutationFn: ({ entity, override }: { entity: AdminEntityRow; override: number | null }) =>
+      updateEntityConfidenceOverride(entity.id, override),
+    onSuccess: async (_result, variables) => {
+      await queryClient.invalidateQueries({ queryKey: adminEntitiesQueryKey })
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'content-stats'] })
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard-counts'] })
+      await queryClient.invalidateQueries({ queryKey: ['entity', variables.entity.slug] })
+      await queryClient.invalidateQueries({ queryKey: ['entities'] })
+    },
   })
 
   const [datesEntity, setDatesEntity] = useState<AdminEntityRow | null>(null)
@@ -241,9 +258,9 @@ export default function AdminEntityManagerPage() {
               <TableHead>Name</TableHead>
               <TableHead>Type</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Confidence</TableHead>
+              <TableHead>Score</TableHead>
               <TableHead>Aliases</TableHead>
-              <TableHead className="text-right">Publication</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -274,10 +291,14 @@ export default function AdminEntityManagerPage() {
             {entities.map((entity) => {
               const isSelected = selectedSet.has(entity.id)
               const isPublished = entity.status === 'published'
+              const isDisputed = entity.status === 'disputed'
               const nextStatus: ContentStatus = isPublished ? 'draft' : 'published'
               const updating =
                 toggleStatusMutation.isPending &&
                 toggleStatusMutation.variables?.entity.id === entity.id
+              const savingOverride =
+                confidenceOverrideMutation.isPending &&
+                confidenceOverrideMutation.variables?.entity.id === entity.id
 
               return (
                 <TableRow key={entity.id}>
@@ -302,14 +323,23 @@ export default function AdminEntityManagerPage() {
                   <TableCell>
                     <Badge className={statusClassNames[entity.status]}>{entity.status}</Badge>
                   </TableCell>
-                  <TableCell className="font-body text-sm text-ink">
-                    {(entity.confidence_override ?? entity.confidence_score).toFixed(2)}
+                  <TableCell>
+                    <ConfidenceOverrideInput
+                      key={`${entity.id}-${entity.confidence_override ?? 'auto'}`}
+                      computedScore={entity.confidence_score}
+                      disabled={savingOverride}
+                      label={entity.name}
+                      override={entity.confidence_override}
+                      onSave={(override) =>
+                        confidenceOverrideMutation.mutateAsync({ entity, override })
+                      }
+                    />
                   </TableCell>
                   <TableCell className="max-w-[260px] truncate font-body text-sm text-[#777]">
                     {entity.aliases.length > 0 ? entity.aliases.join(', ') : 'None'}
                   </TableCell>
                   <TableCell>
-                    <div className="flex justify-end gap-2">
+                    <div className="flex flex-wrap justify-end gap-2">
                       {TIMELINE_ENTITY_TYPES.has(entity.type) ? (
                         <Button
                           aria-label={`Edit timeline dates for ${entity.name}`}
@@ -322,14 +352,47 @@ export default function AdminEntityManagerPage() {
                           Dates
                         </Button>
                       ) : null}
+                      {isDisputed ? (
+                        <Button
+                          disabled={updating}
+                          size="sm"
+                          type="button"
+                          variant="outline"
+                          onClick={() => toggleStatusMutation.mutate({ entity, status: 'draft' })}
+                        >
+                          Set draft
+                        </Button>
+                      ) : null}
                       <Button
-                        disabled={updating || entity.status === 'disputed'}
+                        disabled={updating}
                         size="sm"
                         type="button"
                         variant={isPublished ? 'outline' : 'default'}
                         onClick={() => toggleStatusMutation.mutate({ entity, status: nextStatus })}
                       >
                         {isPublished ? 'Set draft' : 'Publish'}
+                      </Button>
+                      <Button
+                        disabled={updating || isDisputed}
+                        size="sm"
+                        type="button"
+                        variant="outline"
+                        onClick={() => toggleStatusMutation.mutate({ entity, status: 'disputed' })}
+                      >
+                        Mark disputed
+                      </Button>
+                      <Button
+                        disabled={updating}
+                        size="sm"
+                        type="button"
+                        variant="destructive"
+                        onClick={() => {
+                          if (window.confirm(ARCHIVE_ENTITY_CONFIRMATION)) {
+                            toggleStatusMutation.mutate({ entity, status: 'archived' })
+                          }
+                        }}
+                      >
+                        Archive
                       </Button>
                     </div>
                   </TableCell>
