@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase/client'
+import { normalizeSourceUrlForDedup } from '@/lib/sourceUrl'
 import type { Enums, Json, Tables, TablesInsert, TablesUpdate } from '@/types/database'
 
 export type AdminSourceRow = Tables<'sources'>
@@ -232,6 +233,8 @@ export interface AdminRelationshipClaimSummary {
 export interface AdminRelationshipListRow extends AdminRelationshipRow {
   backingClaims: AdminRelationshipClaimSummary[]
   claimCount: number
+  computedWeight: number
+  effectiveWeight: number
   fromEntity: AdminRelationshipEntitySummary | null
   toEntity: AdminRelationshipEntitySummary | null
 }
@@ -279,7 +282,7 @@ const adminEntityPageSize = 50
 const adminClaimPageSize = 50
 const adminRelationshipPageSize = 50
 const adminRelationshipMaxPageSize = 100
-const adminSourceUrlLookupPageSize = 1000
+const confidenceComputationBatchSize = 200
 const reviewQueuePageSize = 50
 const sourceFileBucket = 'source-files'
 
@@ -288,12 +291,6 @@ const requireCount = (count: number | null) => count ?? 0
 const requireBoundedNumber = (value: number, label: string, min: number, max: number) => {
   if (!Number.isFinite(value) || value < min || value > max) {
     throw new Error(`${label} must be between ${min} and ${max}.`)
-  }
-}
-
-const requireNonNegativeNumber = (value: number, label: string) => {
-  if (!Number.isFinite(value) || value < 0) {
-    throw new Error(`${label} must be a non-negative number.`)
   }
 }
 
@@ -317,6 +314,10 @@ const isRelationshipType = (value: unknown): value is RelationshipType => {
   return typeof value === 'string' && relationshipTypes.some((type) => type === value)
 }
 
+export const getEffectiveRelationshipWeight = (
+  relationship: Pick<AdminRelationshipRow, 'weight' | 'weight_override'>
+) => relationship.weight_override ?? relationship.weight
+
 const toStringArray = (value: unknown) => {
   return Array.isArray(value)
     ? value.filter((item): item is string => typeof item === 'string' && Boolean(item.trim()))
@@ -331,6 +332,16 @@ const normalizeName = (name: string) => name.trim().replace(/\s+/g, ' ')
 
 const uniqueIds = (values: string[]) => {
   return Array.from(new Set(values.filter((value) => Boolean(value))))
+}
+
+const chunkStrings = (values: string[], size: number) => {
+  const chunks: string[][] = []
+
+  for (let index = 0; index < values.length; index += size) {
+    chunks.push(values.slice(index, index + size))
+  }
+
+  return chunks
 }
 
 const uniqueStrings = (values: string[]) => {
@@ -810,6 +821,47 @@ const getSourceClaimIds = async (sourceId: string) => {
   return uniqueIds(data.map((evidenceLink) => evidenceLink.claim_id))
 }
 
+export const getSourceAffectedEntityIds = async (sourceId: string): Promise<string[]> => {
+  const anchorIds = await getSourceAnchorIds(sourceId)
+
+  if (anchorIds.length === 0) {
+    return []
+  }
+
+  const [entityLinksResult, evidenceLinksResult] = await Promise.all([
+    supabase.from('entity_source_anchors').select('entity_id').in('anchor_id', anchorIds),
+    supabase.from('claim_evidence').select('claim_id').in('anchor_id', anchorIds),
+  ])
+
+  if (entityLinksResult.error) {
+    throw entityLinksResult.error
+  }
+
+  if (evidenceLinksResult.error) {
+    throw evidenceLinksResult.error
+  }
+
+  const claimIds = uniqueIds(evidenceLinksResult.data.map((evidenceLink) => evidenceLink.claim_id))
+
+  if (claimIds.length === 0) {
+    return uniqueIds(entityLinksResult.data.map((entityLink) => entityLink.entity_id))
+  }
+
+  const { data: claimEntityLinks, error: claimEntityLinksError } = await supabase
+    .from('claim_entities')
+    .select('entity_id')
+    .in('claim_id', claimIds)
+
+  if (claimEntityLinksError) {
+    throw claimEntityLinksError
+  }
+
+  return uniqueIds([
+    ...entityLinksResult.data.map((entityLink) => entityLink.entity_id),
+    ...claimEntityLinks.map((entityLink) => entityLink.entity_id),
+  ])
+}
+
 export const getSourceImpact = async (sourceId: string): Promise<AdminSourceImpact> => {
   const anchorIds = await getSourceAnchorIds(sourceId)
 
@@ -835,12 +887,17 @@ export const getSourceImpact = async (sourceId: string): Promise<AdminSourceImpa
 
   const [entitiesResult, claimsResult, claimEntityLinksResult] = await Promise.all([
     entityIds.length > 0
-      ? supabase.from('entities').select('*').in('id', entityIds).order('name')
+      ? supabase.from('entities').select('*').in('id', entityIds).neq('status', 'archived').order('name')
       : Promise.resolve({ data: [] as AdminEntityRow[], error: null }),
     claimIds.length > 0
-      ? supabase.from('claims').select('*').in('id', claimIds).order('updated_at', {
-          ascending: false,
-        })
+      ? supabase
+          .from('claims')
+          .select('*')
+          .in('id', claimIds)
+          .neq('status', 'archived')
+          .order('updated_at', {
+            ascending: false,
+          })
       : Promise.resolve({ data: [] as AdminClaimRow[], error: null }),
     claimIds.length > 0
       ? supabase.from('claim_entities').select('claim_id, entity_id').in('claim_id', claimIds)
@@ -1160,7 +1217,17 @@ export const searchAdminEntities = async (search: string) => {
 }
 
 export const updateAdminEntityStatus = async (entityId: string, status: ContentStatus) => {
-  const updateValues = status === 'published' ? { status } : { confidence_score: 0, status }
+  const { data: currentEntity, error: currentEntityError } = await supabase
+    .from('entities')
+    .select('status')
+    .eq('id', entityId)
+    .single()
+
+  if (currentEntityError) {
+    throw currentEntityError
+  }
+
+  const updateValues = status === 'draft' ? { confidence_score: 0, status } : { status }
   const { data, error } = await supabase
     .from('entities')
     .update(updateValues)
@@ -1173,8 +1240,13 @@ export const updateAdminEntityStatus = async (entityId: string, status: ContentS
   }
 
   if (status === 'published') {
-    await triggerConfidenceComputation([entityId])
+    await recomputeConfidenceInBatches([entityId])
   }
+
+  await insertAdminAuditEvent('update_entity_status', 'entities', entityId, {
+    new_status: status,
+    old_status: currentEntity.status,
+  })
 
   return data
 }
@@ -1238,7 +1310,7 @@ export const publishAdminEntities = async (
   let confidenceUpdateFailed = false
 
   try {
-    await triggerConfidenceComputation(uniqueEntityIds)
+    await recomputeConfidenceInBatches(uniqueEntityIds)
   } catch {
     confidenceUpdateFailed = true
   }
@@ -1302,7 +1374,7 @@ const setAdminClaimStatus = async (claimId: string, status: ContentStatus) => {
 export const updateAdminClaimStatus = async (claimId: string, status: ContentStatus) => {
   const affectedEntityIds = await setAdminClaimStatus(claimId, status)
 
-  await triggerConfidenceComputation(affectedEntityIds)
+  await recomputeConfidenceInBatches(affectedEntityIds)
 }
 
 export const updateClaimConfidenceOverride = async (claimId: string, override: number | null) => {
@@ -1354,7 +1426,7 @@ export const publishAdminClaims = async (claimIds: string[]) => {
     throw error
   }
 
-  await triggerConfidenceComputation(affectedEntityIds)
+  await recomputeConfidenceInBatches(affectedEntityIds)
 }
 
 const updateSourceClaimsStatus = async (sourceId: string, status: ContentStatus) => {
@@ -1364,12 +1436,16 @@ const updateSourceClaimsStatus = async (sourceId: string, status: ContentStatus)
     return { affectedEntityIds: [], claimIds: [] }
   }
 
-  const affectedEntityIdGroups = await Promise.all(
-    claimIds.map((claimId) => setAdminClaimStatus(claimId, status))
-  )
-  const affectedEntityIds = uniqueIds(affectedEntityIdGroups.flat())
+  const { data: affectedEntityIds, error } = await supabase.rpc('bulk_update_claim_status', {
+    claim_ids: claimIds,
+    next_status: status,
+  })
 
-  await triggerConfidenceComputation(affectedEntityIds)
+  if (error) {
+    throw error
+  }
+
+  await recomputeConfidenceInBatches(affectedEntityIds)
 
   return { affectedEntityIds, claimIds }
 }
@@ -1496,6 +1572,8 @@ export const getAdminRelationships = async ({
         ...relationship,
         backingClaims,
         claimCount: backingClaims.length,
+        computedWeight: relationship.weight,
+        effectiveWeight: getEffectiveRelationshipWeight(relationship),
         fromEntity: entitiesById.get(relationship.from_entity_id) ?? null,
         toEntity: entitiesById.get(relationship.to_entity_id) ?? null,
       }
@@ -1504,12 +1582,14 @@ export const getAdminRelationships = async ({
   }
 }
 
-export const updateRelationshipWeight = async (relationshipId: string, weight: number) => {
-  requireNonNegativeNumber(weight, 'Relationship weight')
+export const updateRelationshipWeight = async (relationshipId: string, weight: number | null) => {
+  if (weight !== null) {
+    requireBoundedNumber(weight, 'Relationship weight', 0, 1)
+  }
 
   const { data: currentRelationship, error: currentRelationshipError } = await supabase
     .from('relationships')
-    .select('weight')
+    .select('weight, weight_override')
     .eq('id', relationshipId)
     .single()
 
@@ -1519,7 +1599,7 @@ export const updateRelationshipWeight = async (relationshipId: string, weight: n
 
   const { data, error } = await supabase
     .from('relationships')
-    .update({ weight })
+    .update({ weight_override: weight })
     .eq('id', relationshipId)
     .select('*')
     .single()
@@ -1529,8 +1609,10 @@ export const updateRelationshipWeight = async (relationshipId: string, weight: n
   }
 
   await insertAdminAuditEvent('update_relationship_weight', 'relationships', relationshipId, {
-    new_weight: weight,
-    old_weight: currentRelationship.weight,
+    new_weight_override: weight,
+    old_effective_weight:
+      currentRelationship.weight_override ?? currentRelationship.weight,
+    old_weight_override: currentRelationship.weight_override,
   })
 
   return data
@@ -1593,7 +1675,7 @@ export const updateAdminSourceStatus = async (sourceId: string, status: ContentS
     throw error
   }
 
-  await triggerConfidenceComputation(affectedEntityIds)
+  await recomputeConfidenceInBatches(affectedEntityIds)
 }
 
 export const publishAdminSources = async (sourceIds: string[]) => {
@@ -1611,7 +1693,7 @@ export const publishAdminSources = async (sourceIds: string[]) => {
     throw error
   }
 
-  await triggerConfidenceComputation(affectedEntityIds)
+  await recomputeConfidenceInBatches(affectedEntityIds)
 }
 
 export const triggerConfidenceComputation = async (entityIds: string[]) => {
@@ -1627,6 +1709,14 @@ export const triggerConfidenceComputation = async (entityIds: string[]) => {
 
   if (error) {
     throw error
+  }
+}
+
+export const recomputeConfidenceInBatches = async (entityIds: string[]) => {
+  const uniqueEntityIds = uniqueIds(entityIds)
+
+  for (const batch of chunkStrings(uniqueEntityIds, confidenceComputationBatchSize)) {
+    await triggerConfidenceComputation(batch)
   }
 }
 
@@ -1692,44 +1782,24 @@ export const adminSourceTitleExists = async (title: string) => {
   return requireCount(count) > 0
 }
 
-export const normalizeSourceUrl = (url: string) => {
-  return url.trim().replace(/\/$/, '').toLowerCase()
-}
+export const normalizeSourceUrl = normalizeSourceUrlForDedup
 
 export const adminSourceUrlExists = async (url: string): Promise<AdminSourceUrlDuplicate | null> => {
-  const normalizedUrl = normalizeSourceUrl(url)
+  const normalizedUrl = normalizeSourceUrlForDedup(url)
 
   if (!normalizedUrl) {
     return null
   }
 
-  let offset = 0
+  const { data, error } = await supabase.rpc('find_source_by_normalized_url', {
+    input_url: normalizedUrl,
+  })
 
-  while (true) {
-    const { data, error } = await supabase
-      .from('sources')
-      .select('id, title, url')
-      .not('url', 'is', null)
-      .range(offset, offset + adminSourceUrlLookupPageSize - 1)
-
-    if (error) {
-      throw error
-    }
-
-    const duplicate = data.find(
-      (source) => source.url && normalizeSourceUrl(source.url) === normalizedUrl
-    )
-
-    if (duplicate) {
-      return duplicate
-    }
-
-    if (data.length < adminSourceUrlLookupPageSize) {
-      return null
-    }
-
-    offset += adminSourceUrlLookupPageSize
+  if (error) {
+    throw error
   }
+
+  return data[0] ?? null
 }
 
 const getSourceReviewStatus = (
