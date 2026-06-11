@@ -1,4 +1,5 @@
 import type { SourceFormat } from '@/lib/api/admin'
+import { parseAndNormalizeSourceUrlForStorage } from '@/lib/sourceUrl'
 
 export const maxSourceUploadBytes = 1024 * 1024 * 1024
 
@@ -95,15 +96,7 @@ export const validateSourceFile = (file: File) => {
   return null
 }
 
-export const normalizeSourceUrl = (value: string) => {
-  const url = new URL(value)
-
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-    throw new Error('Source URLs must start with http:// or https://.')
-  }
-
-  return url.toString()
-}
+export const normalizeSourceUrl = parseAndNormalizeSourceUrlForStorage
 
 export const createClientUuid = () => {
   if (!globalThis.crypto?.randomUUID) {
