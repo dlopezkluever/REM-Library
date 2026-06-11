@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import {
   useMutation,
@@ -18,6 +19,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Table,
   TableBody,
@@ -57,6 +59,32 @@ const getMutationError = (error: unknown) => {
 }
 
 type BulkAction = 'dispute-claims' | 'unpublish-claims'
+type ImpactStatusFilter = 'all' | 'published' | 'draft' | 'disputed'
+
+const impactStatusFilters: Array<{ label: string; value: ImpactStatusFilter }> = [
+  { label: 'All', value: 'all' },
+  { label: 'Published', value: 'published' },
+  { label: 'Draft', value: 'draft' },
+  { label: 'Disputed', value: 'disputed' },
+]
+
+const getEffectiveConfidence = (row: AdminClaimRow | AdminEntityRow) =>
+  row.confidence_override ?? row.confidence_score
+
+const ConfidenceCell = ({ row }: { row: AdminClaimRow | AdminEntityRow }) => {
+  const effectiveScore = getEffectiveConfidence(row)
+
+  if (row.confidence_override === null) {
+    return <span>{effectiveScore.toFixed(2)}</span>
+  }
+
+  return (
+    <span>
+      {effectiveScore.toFixed(2)} override
+      <span className="ml-1 text-[#777]">auto {row.confidence_score.toFixed(2)}</span>
+    </span>
+  )
+}
 
 export default function AdminSourceImpactPage() {
   const { id } = useParams()
@@ -64,6 +92,7 @@ export default function AdminSourceImpactPage() {
   const sourceId = id ?? ''
   const sourceQueryKey = ['admin', 'source', sourceId] as const
   const impactQueryKey = ['admin', 'source-impact', sourceId] as const
+  const [statusFilter, setStatusFilter] = useState<ImpactStatusFilter>('all')
 
   const sourceQuery = useQuery({
     enabled: Boolean(sourceId),
@@ -103,8 +132,14 @@ export default function AdminSourceImpactPage() {
   })
 
   const impact = impactQuery.data
-  const entities = impact?.entities ?? []
-  const claims = impact?.claims ?? []
+  const allEntities = impact?.entities ?? []
+  const allClaims = impact?.claims ?? []
+  const entities =
+    statusFilter === 'all'
+      ? allEntities
+      : allEntities.filter((entity) => entity.status === statusFilter)
+  const claims =
+    statusFilter === 'all' ? allClaims : allClaims.filter((claim) => claim.status === statusFilter)
   const actionError = entityStatusMutation.error ?? claimStatusMutation.error ?? bulkMutation.error
   const isLoading = sourceQuery.isLoading || impactQuery.isLoading
   const hasError = sourceQuery.error || impactQuery.error
@@ -157,7 +192,7 @@ export default function AdminSourceImpactPage() {
 
       {!isLoading && !hasError ? (
         <>
-          {entities.length === 0 && claims.length === 0 ? (
+          {allEntities.length === 0 && allClaims.length === 0 ? (
             <div className="rounded border border-0.5 border-black/[0.09] bg-white p-5">
               <p className="font-body text-sm text-[#777]">
                 No entities or claims have been confirmed from this source yet.
@@ -165,9 +200,18 @@ export default function AdminSourceImpactPage() {
             </div>
           ) : null}
 
-          <BulkActionBar
+          <StatusFilterTabs
             claimCount={claims.length}
-            disabled={bulkMutation.isPending || claims.length === 0}
+            entityCount={entities.length}
+            totalClaimCount={allClaims.length}
+            totalEntityCount={allEntities.length}
+            value={statusFilter}
+            onChange={setStatusFilter}
+          />
+
+          <BulkActionBar
+            claimCount={allClaims.length}
+            disabled={bulkMutation.isPending || allClaims.length === 0}
             onConfirm={(action) => bulkMutation.mutate(action)}
           />
 
@@ -197,6 +241,38 @@ const ImpactSkeleton = () => (
     <Skeleton className="h-56 w-full" />
     <Skeleton className="h-64 w-full" />
   </div>
+)
+
+const StatusFilterTabs = ({
+  claimCount,
+  entityCount,
+  totalClaimCount,
+  totalEntityCount,
+  value,
+  onChange,
+}: {
+  claimCount: number
+  entityCount: number
+  totalClaimCount: number
+  totalEntityCount: number
+  value: ImpactStatusFilter
+  onChange: (value: ImpactStatusFilter) => void
+}) => (
+  <section className="flex flex-wrap items-center justify-between gap-3 rounded border border-0.5 border-black/[0.09] bg-white p-4">
+    <Tabs value={value} onValueChange={(nextValue) => onChange(nextValue as ImpactStatusFilter)}>
+      <TabsList>
+        {impactStatusFilters.map((filter) => (
+          <TabsTrigger key={filter.value} value={filter.value}>
+            {filter.label}
+          </TabsTrigger>
+        ))}
+      </TabsList>
+    </Tabs>
+    <p className="font-body text-xs text-[#777]">
+      Showing {entityCount} of {totalEntityCount} entities and {claimCount} of {totalClaimCount}{' '}
+      claims.
+    </p>
+  </section>
 )
 
 const BulkActionBar = ({
@@ -330,7 +406,7 @@ const EntitiesSection = ({
               <TableCell>
                 <Link
                   className="inline-flex max-w-[320px] items-center gap-2 truncate font-body text-sm text-ink hover:text-verdigris"
-                  to={`/entity/${entity.slug}`}
+                  to={`/admin/entities?search=${encodeURIComponent(entity.name)}`}
                 >
                   {entity.name}
                   <ExternalLink aria-hidden="true" className="h-3 w-3 shrink-0" />
@@ -343,7 +419,7 @@ const EntitiesSection = ({
                 <Badge className={statusClassNames[entity.status]}>{entity.status}</Badge>
               </TableCell>
               <TableCell className="font-body text-sm text-ink">
-                {entity.confidence_score.toFixed(2)}
+                <ConfidenceCell row={entity} />
               </TableCell>
               <TableCell>
                 <div className="flex justify-end">
@@ -415,7 +491,7 @@ const ClaimsSection = ({
               <TableCell>
                 <Link
                   className="line-clamp-2 max-w-[460px] font-body text-sm text-ink hover:text-verdigris"
-                  to={`/claim/${claim.id}`}
+                  to={`/admin/claims?search=${encodeURIComponent(claim.statement)}`}
                 >
                   {claim.statement}
                 </Link>
@@ -424,7 +500,7 @@ const ClaimsSection = ({
                 <Badge className={statusClassNames[claim.status]}>{claim.status}</Badge>
               </TableCell>
               <TableCell className="font-body text-sm text-ink">
-                {claim.confidence_score.toFixed(2)}
+                <ConfidenceCell row={claim} />
               </TableCell>
               <TableCell className="max-w-[260px] truncate font-body text-sm text-[#777]">
                 {claim.entityNames.length > 0 ? claim.entityNames.join(', ') : 'None'}
