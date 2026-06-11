@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Check, ChevronLeft, ChevronRight, RefreshCw, Search } from 'lucide-react'
 import { ConfidenceOverrideInput } from '@/components/admin/ConfidenceOverrideInput'
@@ -45,8 +46,9 @@ const getMutationError = (error: unknown) => {
 
 export default function AdminClaimManagerPage() {
   const queryClient = useQueryClient()
+  const [searchParams] = useSearchParams()
   const [page, setPage] = useState(0)
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = useState(searchParams.get('search') ?? '')
   const [statusFilter, setStatusFilter] = useState<ContentStatus | 'all'>('all')
   const [selectedClaimIds, setSelectedClaimIds] = useState<string[]>([])
 
