@@ -13,6 +13,11 @@ export interface EntityNeighborhood {
 
 const unique = (values: string[]) => Array.from(new Set(values))
 
+const withEffectiveRelationshipWeight = (relationship: RelationshipRow): RelationshipRow => ({
+  ...relationship,
+  weight: relationship.weight_override ?? relationship.weight,
+})
+
 interface PublishedEntityOptions {
   search?: string
   type?: EntityType
@@ -88,6 +93,7 @@ export const getEntityNeighborhood = async (
   const { data: firstHopRelationships, error: firstHopError } = await supabase
     .from('relationships')
     .select('*')
+    .eq('status', 'active')
     .or(`from_entity_id.eq.${id},to_entity_id.eq.${id}`)
 
   if (firstHopError) {
@@ -112,6 +118,7 @@ export const getEntityNeighborhood = async (
     const { data: secondHopRelationships, error: secondHopError } = await supabase
       .from('relationships')
       .select('*')
+      .eq('status', 'active')
       .or(filters)
 
     if (secondHopError) {
@@ -150,11 +157,13 @@ export const getEntityNeighborhood = async (
   }
 
   const visibleEntityIds = new Set(entities.map((entity) => entity.id))
-  const visibleRelationships = relationships.filter(
-    (relationship) =>
-      visibleEntityIds.has(relationship.from_entity_id) &&
-      visibleEntityIds.has(relationship.to_entity_id)
-  )
+  const visibleRelationships = relationships
+    .filter(
+      (relationship) =>
+        visibleEntityIds.has(relationship.from_entity_id) &&
+        visibleEntityIds.has(relationship.to_entity_id)
+    )
+    .map(withEffectiveRelationshipWeight)
 
   return { entities, relationships: visibleRelationships }
 }
