@@ -22,13 +22,13 @@ import {
 import { ROUTES } from '@/constants/routes'
 import {
   archiveAdminSource,
-  getSourceImpact,
+  getSourceAffectedEntityIds,
   getPipelineRerunAction,
   getAdminSourceById,
+  recomputeConfidenceInBatches,
   rerunSourcePipelineStage,
   restoreAdminSource,
   subscribeToSourceUpdates,
-  triggerConfidenceComputation,
   updateAdminSourceStatus,
   updateSourceTier,
   type SourceTier,
@@ -133,10 +133,10 @@ export default function AdminSourceDetailPage() {
       }
 
       const updatedSource = await updateSourceTier(source.id, tier)
-      const impact = await getSourceImpact(source.id)
+      const affectedEntityIds = await getSourceAffectedEntityIds(source.id)
 
       return {
-        impactedEntityIds: impact.entities.map((entity) => entity.id),
+        impactedEntityIds: affectedEntityIds,
         source: updatedSource,
       }
     },
@@ -159,7 +159,7 @@ export default function AdminSourceDetailPage() {
 
   const recomputeMutation = useMutation({
     mutationFn: async (entityIds: string[]) => {
-      await Promise.all(entityIds.map((entityId) => triggerConfidenceComputation([entityId])))
+      await recomputeConfidenceInBatches(entityIds)
     },
     onSuccess: async () => {
       setTierMessage('Confidence recomputation started for affected entities.')

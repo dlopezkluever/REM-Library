@@ -63,7 +63,7 @@ const getMutationError = (error: unknown) => {
 interface RelationshipWeightInputProps {
   disabled: boolean
   relationship: AdminRelationshipListRow
-  onSave: (weight: number) => Promise<unknown>
+  onSave: (weight: number | null) => Promise<unknown>
 }
 
 const RelationshipWeightInput = ({
@@ -71,41 +71,63 @@ const RelationshipWeightInput = ({
   relationship,
   onSave,
 }: RelationshipWeightInputProps) => {
-  const [value, setValue] = useState(String(relationship.weight))
+  const [value, setValue] = useState(String(relationship.effectiveWeight))
 
   const handleBlur = async () => {
-    const nextWeight = Number.parseFloat(value)
+    if (!value.trim()) {
+      if (relationship.weight_override === null) {
+        setValue(String(relationship.effectiveWeight))
+        return
+      }
 
-    if (!Number.isFinite(nextWeight) || nextWeight < 0) {
-      setValue(String(relationship.weight))
+      try {
+        await onSave(null)
+      } catch {
+        setValue(String(relationship.effectiveWeight))
+      }
       return
     }
 
-    if (nextWeight === relationship.weight) {
+    const nextWeight = Number.parseFloat(value)
+
+    if (!Number.isFinite(nextWeight) || nextWeight < 0 || nextWeight > 1) {
+      setValue(String(relationship.effectiveWeight))
+      return
+    }
+
+    if (nextWeight === relationship.effectiveWeight) {
       return
     }
 
     try {
       await onSave(nextWeight)
     } catch {
-      setValue(String(relationship.weight))
+      setValue(String(relationship.effectiveWeight))
     }
   }
 
   return (
-    <Input
-      aria-label={`Weight for ${relationship.fromEntity?.name ?? 'source'} to ${
-        relationship.toEntity?.name ?? 'target'
-      }`}
-      className="h-8 w-24"
-      disabled={disabled}
-      min={0}
-      step={0.01}
-      type="number"
-      value={value}
-      onBlur={() => void handleBlur()}
-      onChange={(event) => setValue(event.target.value)}
-    />
+    <div>
+      <Input
+        aria-label={`Weight for ${relationship.fromEntity?.name ?? 'source'} to ${
+          relationship.toEntity?.name ?? 'target'
+        }`}
+        className="h-8 w-24"
+        disabled={disabled}
+        max={1}
+        min={0}
+        step={0.01}
+        type="number"
+        value={value}
+        onBlur={() => void handleBlur()}
+        onChange={(event) => setValue(event.target.value)}
+      />
+      {relationship.weight_override !== null ? (
+        <p className="mt-1 font-body text-[11px] text-[#777]">
+          override, auto {relationship.computedWeight.toFixed(2)}
+        </p>
+      ) : null}
+    </div>
   )
 }
 
@@ -134,7 +156,7 @@ export default function AdminRelationshipManagerPage() {
       weight,
     }: {
       relationship: AdminRelationshipListRow
-      weight: number
+      weight: number | null
     }) => updateRelationshipWeight(relationship.id, weight),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: adminRelationshipsQueryKey })
@@ -330,7 +352,7 @@ export default function AdminRelationshipManagerPage() {
                     </TableCell>
                     <TableCell>
                       <RelationshipWeightInput
-                        key={`${relationship.id}-${relationship.weight}`}
+                        key={`${relationship.id}-${relationship.effectiveWeight}-${relationship.weight_override ?? 'auto'}`}
                         disabled={savingWeight || archiving || restoring}
                         relationship={relationship}
                         onSave={(weight) =>
