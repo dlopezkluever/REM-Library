@@ -74,6 +74,7 @@ export default function AdminSourceDetailPage() {
   const [license, setLicense] = useState('')
   const [rightsNotes, setRightsNotes] = useState('')
   const [attribution, setAttribution] = useState('')
+  const [fairUseRationale, setFairUseRationale] = useState('')
   const [recomputeDialogOpen, setRecomputeDialogOpen] = useState(false)
   const [impactedEntityIds, setImpactedEntityIds] = useState<string[]>([])
 
@@ -208,6 +209,7 @@ export default function AdminSourceDetailPage() {
 
       return updateSourceRightsMetadata(source.id, {
         attribution: attribution.trim() || null,
+        fair_use_rationale: fairUseRationale.trim() || null,
         license: license.trim() || null,
         rights_notes: rightsNotes.trim() || null,
       })
@@ -273,6 +275,7 @@ export default function AdminSourceDetailPage() {
     setLicense(source.license ?? '')
     setRightsNotes(source.rights_notes ?? '')
     setAttribution(source.attribution ?? '')
+    setFairUseRationale(source.fair_use_rationale ?? '')
     /* eslint-enable react-hooks/set-state-in-effect */
   }, [source])
 
@@ -526,6 +529,13 @@ export default function AdminSourceDetailPage() {
                         placeholder="Rights notes"
                         value={rightsNotes}
                         onChange={(event) => setRightsNotes(event.target.value)}
+                      />
+                      <textarea
+                        aria-label="Fair use rationale"
+                        className="min-h-20 w-full rounded border border-0.5 border-black/15 bg-stone px-3 py-2 font-body text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-verdigris"
+                        placeholder="Fair use rationale"
+                        value={fairUseRationale}
+                        onChange={(event) => setFairUseRationale(event.target.value)}
                       />
                       <div className="flex items-center gap-3">
                         <Button

@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useAuth } from '@/hooks/useAuth'
 import { getAdminRedirectDestination } from '@/lib/adminRedirect'
+import { ROUTES } from '@/constants/routes'
 
 export default function AdminLoginPage() {
   const navigate = useNavigate()
@@ -83,6 +84,9 @@ export default function AdminLoginPage() {
         <Button className="mt-6 w-full" disabled={isSubmitting} type="submit">
           {isSubmitting ? 'Signing in' : 'Sign in'}
         </Button>
+        <Link className="mt-4 block text-center font-body text-xs text-verdigris" to={ROUTES.REGISTER}>
+          Create contributor account
+        </Link>
       </form>
     </div>
   )
