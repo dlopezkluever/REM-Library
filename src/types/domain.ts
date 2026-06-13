@@ -36,7 +36,7 @@ export type PipelineStage =
   | 'curated'
   | 'published'
 
-export type AdminRole = 'super_admin' | 'editor' | 'viewer'
+export type AdminRole = 'super_admin' | 'editor' | 'viewer' | 'contributor'
 
 export interface EntityNode {
   id: string

@@ -7,6 +7,6 @@
     "zod": "npm:zod@4.1.13"
   },
   "tasks": {
-    "check": "deno check trigger-transcription/index.ts trigger-chunking/index.ts assemblyai-webhook/index.ts trigger-extraction/index.ts search/index.ts"
+    "check": "deno check trigger-transcription/index.ts trigger-chunking/index.ts assemblyai-webhook/index.ts trigger-extraction/index.ts trigger-url-fetch/index.ts trigger-site-crawl/index.ts search/index.ts"
   }
 }
