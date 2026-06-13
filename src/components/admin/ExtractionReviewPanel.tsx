@@ -26,6 +26,8 @@ import {
   rejectFailedExtraction,
   reviewExtractionItem,
   searchAdminEntities,
+  interpretationFrameLabels,
+  interpretationFrames,
   type ReviewClaimItem,
   type ReviewEntityItem,
   type ReviewItem,
@@ -33,8 +35,14 @@ import {
   type SaveClaimReviewInput,
   type SaveEntityReviewInput,
 } from '@/lib/api/admin'
+import { useAuth } from '@/hooks/useAuth'
 import { cn } from '@/lib/utils'
-import { enrichSplitError, findHighlightSpan, validateClaimInput, validateEntityInput } from '@/lib/reviewUtils'
+import {
+  enrichSplitError,
+  findHighlightSpan,
+  validateClaimInput,
+  validateEntityInput,
+} from '@/lib/reviewUtils'
 
 interface ExtractionReviewPanelProps {
   group: ReviewSourceGroup
@@ -208,9 +216,11 @@ const EntityFields = ({
 }
 
 const ClaimFields = ({
+  canSetCanonical,
   value,
   onChange,
 }: {
+  canSetCanonical: boolean
   onChange: (value: SaveClaimReviewInput) => void
   value: SaveClaimReviewInput
 }) => {
@@ -256,6 +266,37 @@ const ClaimFields = ({
         value={value.evidenceSummary}
         onChange={(event) => onChange({ ...value, evidenceSummary: event.target.value })}
       />
+      <select
+        aria-label="Interpretation frame"
+        className="h-10 w-full rounded border border-0.5 border-black/15 bg-stone px-3 font-body text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-verdigris"
+        value={value.interpretationFrame ?? ''}
+        onChange={(event) =>
+          onChange({
+            ...value,
+            interpretationFrame: event.target.value
+              ? (event.target.value as SaveClaimReviewInput['interpretationFrame'])
+              : null,
+          })
+        }
+      >
+        <option value="">No frame</option>
+        {interpretationFrames.map((frame) => (
+          <option key={frame} value={frame}>
+            {interpretationFrameLabels[frame]}
+          </option>
+        ))}
+      </select>
+      {canSetCanonical ? (
+        <label className="flex items-center gap-2 rounded border border-0.5 border-black/[0.09] bg-stone/40 px-3 py-2 font-body text-sm text-ink">
+          <input
+            checked={value.isCanonical}
+            className="h-4 w-4 accent-verdigris"
+            type="checkbox"
+            onChange={(event) => onChange({ ...value, isCanonical: event.target.checked })}
+          />
+          Canonical claim
+        </label>
+      ) : null}
     </div>
   )
 }
@@ -270,16 +311,20 @@ const toEntityInput = (item: ReviewEntityItem): SaveEntityReviewInput => ({
 const toClaimInput = (item: ReviewClaimItem): SaveClaimReviewInput => ({
   entitiesInvolved: item.entitiesInvolved,
   evidenceSummary: item.evidenceSummary,
+  interpretationFrame: item.interpretationFrame,
+  isCanonical: item.isCanonical,
   relationshipType: item.relationshipType,
   statement: item.statement,
 })
 
 export const ExtractionReviewPanel = ({ group, onReviewed }: ExtractionReviewPanelProps) => {
+  const { role } = useAuth()
   const [selection, setSelection] = useState(getFirstPendingSelection(group))
   const [mode, setMode] = useState<Mode>('view')
   const [entityEdit, setEntityEdit] = useState<SaveEntityReviewInput | null>(null)
   const [claimEdit, setClaimEdit] = useState<SaveClaimReviewInput | null>(null)
   const [mergeSearch, setMergeSearch] = useState('')
+  const [canonicalConflictNotice, setCanonicalConflictNotice] = useState<string | null>(null)
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false)
   const [splitDraft, setSplitDraft] = useState<{
     first: SaveEntityReviewInput
@@ -319,9 +364,14 @@ export const ExtractionReviewPanel = ({ group, onReviewed }: ExtractionReviewPan
 
   const reviewMutation = useMutation({
     mutationFn: reviewExtractionItem,
-    onSuccess: () => {
+    onSuccess: (result) => {
       setMode('view')
       setRejectDialogOpen(false)
+      setCanonicalConflictNotice(
+        result.canonicalConflict
+          ? 'Claim created. Another canonical claim exists for this entity; set canonical from the claim manager if you want to replace it.'
+          : null
+      )
       onReviewed()
     },
   })
@@ -339,8 +389,16 @@ export const ExtractionReviewPanel = ({ group, onReviewed }: ExtractionReviewPan
       return
     }
 
+    setCanonicalConflictNotice(null)
     reviewMutation.mutate({
       action: 'confirm',
+      confirmClaimMeta:
+        selectedItem.kind === 'claim'
+          ? {
+              interpretationFrame: selectedItem.interpretationFrame,
+              isCanonical: selectedItem.isCanonical,
+            }
+          : undefined,
       extractionId: selectedExtraction.extraction.id,
       itemId: selectedItem.itemId,
       itemKind: selectedItem.kind,
@@ -356,6 +414,7 @@ export const ExtractionReviewPanel = ({ group, onReviewed }: ExtractionReviewPan
       return
     }
 
+    setCanonicalConflictNotice(null)
     reviewMutation.mutate({
       action: 'edit',
       claim: selectedItem.kind === 'claim' ? (claimEdit ?? undefined) : undefined,
@@ -371,6 +430,7 @@ export const ExtractionReviewPanel = ({ group, onReviewed }: ExtractionReviewPan
       return
     }
 
+    setCanonicalConflictNotice(null)
     reviewMutation.mutate({
       action: 'reject',
       extractionId: selectedExtraction.extraction.id,
@@ -388,6 +448,7 @@ export const ExtractionReviewPanel = ({ group, onReviewed }: ExtractionReviewPan
       return
     }
 
+    setCanonicalConflictNotice(null)
     reviewMutation.mutate({
       action: 'split',
       extractionId: selectedExtraction.extraction.id,
@@ -675,7 +736,11 @@ export const ExtractionReviewPanel = ({ group, onReviewed }: ExtractionReviewPan
           ) : null}
 
           {mode === 'edit' && selectedItem.kind === 'claim' && claimEdit ? (
-            <ClaimFields value={claimEdit} onChange={setClaimEdit} />
+            <ClaimFields
+              canSetCanonical={role === 'super_admin'}
+              value={claimEdit}
+              onChange={setClaimEdit}
+            />
           ) : null}
 
           {mode === 'merge' && selectedItem.kind === 'entity' ? (
@@ -693,28 +758,32 @@ export const ExtractionReviewPanel = ({ group, onReviewed }: ExtractionReviewPan
                 />
               </div>
               <div className="max-h-52 overflow-y-auto rounded border border-0.5 border-black/[0.09]">
-                {(mergeResultsQuery.data ?? []).map((entity) => (
-                  <button
-                    key={entity.id}
-                    className="block w-full border-b border-b-0.5 border-b-black/[0.06] px-3 py-2 text-left last:border-b-0 hover:bg-black/[0.03]"
-                    disabled={reviewMutation.isPending}
-                    type="button"
-                    onClick={() =>
-                      reviewMutation.mutate({
-                        action: 'merge',
-                        extractionId: selectedExtraction.extraction.id,
-                        itemId: selectedItem.itemId,
-                        itemKind: 'entity',
-                        targetEntityId: entity.id,
-                      })
-                    }
-                  >
-                    <p className="font-body text-sm text-ink">{entity.name}</p>
-                    <p className="font-body text-[11px] text-[#777]">
-                      {ENTITY_LABELS[entity.type]}
-                    </p>
-                  </button>
-                ))}
+                {mergeResultsQuery.isLoading ? (
+                  <p className="px-3 py-2 font-body text-sm text-[#777]">Searching...</p>
+                ) : (
+                  (mergeResultsQuery.data ?? []).map((entity) => (
+                    <button
+                      key={entity.id}
+                      className="block w-full border-b border-b-0.5 border-b-black/[0.06] px-3 py-2 text-left last:border-b-0 hover:bg-black/[0.03]"
+                      disabled={reviewMutation.isPending}
+                      type="button"
+                      onClick={() =>
+                        reviewMutation.mutate({
+                          action: 'merge',
+                          extractionId: selectedExtraction.extraction.id,
+                          itemId: selectedItem.itemId,
+                          itemKind: 'entity',
+                          targetEntityId: entity.id,
+                        })
+                      }
+                    >
+                      <p className="font-body text-sm text-ink">{entity.name}</p>
+                      <p className="font-body text-[11px] text-[#777]">
+                        {ENTITY_LABELS[entity.type]}
+                      </p>
+                    </button>
+                  ))
+                )}
                 {mergeSearch.trim().length > 1 &&
                 !mergeResultsQuery.isLoading &&
                 (mergeResultsQuery.data ?? []).length === 0 ? (
@@ -794,8 +863,32 @@ export const ExtractionReviewPanel = ({ group, onReviewed }: ExtractionReviewPan
                       {selectedItem.evidenceSummary}
                     </p>
                   </div>
+                  <div>
+                    <p className="font-display text-[8px] uppercase tracking-label text-[#777]">
+                      Frame
+                    </p>
+                    <p className="mt-1 font-body text-sm text-ink">
+                      {selectedItem.interpretationFrame
+                        ? interpretationFrameLabels[selectedItem.interpretationFrame]
+                        : 'No frame'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="font-display text-[8px] uppercase tracking-label text-[#777]">
+                      Canonical
+                    </p>
+                    <p className="mt-1 font-body text-sm text-ink">
+                      {selectedItem.isCanonical ? 'Yes' : 'No'}
+                    </p>
+                  </div>
                 </>
               )}
+            </div>
+          ) : null}
+
+          {canonicalConflictNotice ? (
+            <div className="mt-4 rounded border border-0.5 border-amber-300/70 bg-amber-50 p-3">
+              <p className="font-body text-sm text-amber-800">{canonicalConflictNotice}</p>
             </div>
           ) : null}
 

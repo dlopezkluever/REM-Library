@@ -6,10 +6,24 @@ import { filterPublicRelationships } from '@/lib/api/relationships'
 
 export type EntityRow = Tables<'entities'>
 export type RelationshipRow = Tables<'relationships'>
+export type PreviewClaimRow = Pick<
+  Tables<'claims'>,
+  | 'confidence_override'
+  | 'confidence_score'
+  | 'id'
+  | 'interpretation_frame'
+  | 'is_canonical'
+  | 'statement'
+>
 
 export interface EntityNeighborhood {
   entities: EntityRow[]
   relationships: RelationshipRow[]
+}
+
+export interface EntityPreviewWithClaims {
+  entity: EntityRow
+  previewClaims: PreviewClaimRow[]
 }
 
 const unique = (values: string[]) => Array.from(new Set(values))
@@ -80,6 +94,63 @@ export const getEntityBySlug = async (slug: string) => {
   }
 
   return data
+}
+
+const getEffectiveClaimConfidence = (claim: PreviewClaimRow) =>
+  claim.confidence_override ?? claim.confidence_score
+
+export const getEntityPreviewWithClaims = async (
+  entityId: string
+): Promise<EntityPreviewWithClaims> => {
+  const { data: entity, error: entityError } = await supabase
+    .from('entities')
+    .select('*')
+    .eq('id', entityId)
+    .eq('status', 'published')
+    .single()
+
+  if (entityError) {
+    throw entityError
+  }
+
+  const { data: claimLinks, error: claimLinksError } = await supabase
+    .from('claim_entities')
+    .select('claim_id')
+    .eq('entity_id', entityId)
+
+  if (claimLinksError) {
+    throw claimLinksError
+  }
+
+  const claimIds = claimLinks.map((claimLink) => claimLink.claim_id)
+
+  if (claimIds.length === 0) {
+    return { entity, previewClaims: [] }
+  }
+
+  const { data: claims, error: claimsError } = await supabase
+    .from('claims')
+    .select(
+      'id, statement, confidence_score, confidence_override, interpretation_frame, is_canonical'
+    )
+    .in('id', claimIds)
+    .eq('status', 'published')
+
+  if (claimsError) {
+    throw claimsError
+  }
+
+  const previewClaims = [...(claims as PreviewClaimRow[])]
+    .sort((firstClaim, secondClaim) => {
+      if (firstClaim.is_canonical !== secondClaim.is_canonical) {
+        return firstClaim.is_canonical ? -1 : 1
+      }
+
+      return getEffectiveClaimConfidence(secondClaim) - getEffectiveClaimConfidence(firstClaim)
+    })
+    .slice(0, 2)
+
+  return { entity, previewClaims }
 }
 
 export const getEntityNeighborhood = async (
@@ -155,12 +226,11 @@ export const getEntityNeighborhood = async (
   }
 
   const visibleEntityIds = new Set(entities.map((entity) => entity.id))
-  const visibleRelationships = relationships
-    .filter(
-      (relationship) =>
-        visibleEntityIds.has(relationship.from_entity_id) &&
-        visibleEntityIds.has(relationship.to_entity_id)
-    )
+  const visibleRelationships = relationships.filter(
+    (relationship) =>
+      visibleEntityIds.has(relationship.from_entity_id) &&
+      visibleEntityIds.has(relationship.to_entity_id)
+  )
 
   return { entities, relationships: visibleRelationships }
 }

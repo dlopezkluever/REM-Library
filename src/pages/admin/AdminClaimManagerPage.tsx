@@ -1,10 +1,27 @@
 import { useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, ChevronLeft, ChevronRight, RefreshCw, Search } from 'lucide-react'
+import {
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Crown,
+  Lock,
+  Plus,
+  RefreshCw,
+  Search,
+} from 'lucide-react'
 import { ConfidenceOverrideInput } from '@/components/admin/ConfidenceOverrideInput'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import {
   Table,
@@ -14,14 +31,21 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { ROUTES } from '@/constants/routes'
 import {
   getAdminClaimsPage,
+  interpretationFrameLabels,
+  interpretationFrames,
   publishAdminClaims,
+  setClaimCanonical,
   updateAdminClaimStatus,
   updateClaimConfidenceOverride,
+  updateClaimInterpretationFrame,
   type AdminClaimListRow,
   type ContentStatus,
+  type InterpretationFrame,
 } from '@/lib/api/admin'
+import { useAuth } from '@/hooks/useAuth'
 import { cn } from '@/lib/utils'
 
 const adminClaimsQueryKey = ['admin', 'claims'] as const
@@ -46,11 +70,14 @@ const getMutationError = (error: unknown) => {
 
 export default function AdminClaimManagerPage() {
   const queryClient = useQueryClient()
+  const { role } = useAuth()
   const [searchParams] = useSearchParams()
   const [page, setPage] = useState(0)
   const [search, setSearch] = useState(searchParams.get('search') ?? '')
   const [statusFilter, setStatusFilter] = useState<ContentStatus | 'all'>('all')
   const [selectedClaimIds, setSelectedClaimIds] = useState<string[]>([])
+  const [canonicalConflictTarget, setCanonicalConflictTarget] =
+    useState<AdminClaimListRow | null>(null)
 
   const claimsQuery = useQuery({
     queryKey: [...adminClaimsQueryKey, page, search, statusFilter],
@@ -96,6 +123,44 @@ export default function AdminClaimManagerPage() {
     },
   })
 
+  const frameMutation = useMutation({
+    mutationFn: ({
+      claim,
+      frame,
+    }: {
+      claim: AdminClaimListRow
+      frame: InterpretationFrame | null
+    }) => updateClaimInterpretationFrame(claim.id, frame),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: adminClaimsQueryKey })
+      await queryClient.invalidateQueries({ queryKey: ['entity'] })
+    },
+  })
+
+  const canonicalMutation = useMutation({
+    mutationFn: async ({
+      claim,
+      forceReplace = false,
+      value,
+    }: {
+      claim: AdminClaimListRow
+      forceReplace?: boolean
+      value: boolean
+    }) => {
+      return setClaimCanonical(claim.id, value, forceReplace)
+    },
+    onSuccess: async (result, variables) => {
+      if (result.conflict && variables.value && !variables.forceReplace) {
+        setCanonicalConflictTarget(variables.claim)
+        return
+      }
+
+      setCanonicalConflictTarget(null)
+      await queryClient.invalidateQueries({ queryKey: adminClaimsQueryKey })
+      await queryClient.invalidateQueries({ queryKey: ['entity'] })
+    },
+  })
+
   const claimPage = claimsQuery.data
   const claims = claimPage?.claims ?? []
   const totalCount = claimPage?.totalCount ?? 0
@@ -103,7 +168,11 @@ export default function AdminClaimManagerPage() {
   const pageCount = Math.max(Math.ceil(totalCount / pageSize), 1)
   const selectedSet = useMemo(() => new Set(selectedClaimIds), [selectedClaimIds])
   const allVisibleSelected = claims.length > 0 && claims.every((claim) => selectedSet.has(claim.id))
-  const actionError = toggleStatusMutation.error ?? bulkPublishMutation.error
+  const actionError =
+    toggleStatusMutation.error ??
+    bulkPublishMutation.error ??
+    frameMutation.error ??
+    canonicalMutation.error
 
   const toggleSelected = (claimId: string) => {
     setSelectedClaimIds((current) =>
@@ -123,6 +192,12 @@ export default function AdminClaimManagerPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          <Button asChild size="sm" type="button" variant="outline">
+            <Link to={ROUTES.ADMIN_CLAIM_NEW}>
+              <Plus aria-hidden="true" className="h-3.5 w-3.5" />
+              Create claim
+            </Link>
+          </Button>
           <Button
             disabled={claimsQuery.isFetching}
             size="sm"
@@ -207,6 +282,8 @@ export default function AdminClaimManagerPage() {
               </TableHead>
               <TableHead>Statement</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead>Frame</TableHead>
+              <TableHead>Canonical</TableHead>
               <TableHead>Score</TableHead>
               <TableHead>Entities</TableHead>
               <TableHead>Evidence</TableHead>
@@ -216,7 +293,7 @@ export default function AdminClaimManagerPage() {
           <TableBody>
             {claimsQuery.isLoading ? (
               <TableRow>
-                <TableCell className="font-body text-sm text-[#777]" colSpan={7}>
+                <TableCell className="font-body text-sm text-[#777]" colSpan={9}>
                   Loading claims...
                 </TableCell>
               </TableRow>
@@ -224,7 +301,7 @@ export default function AdminClaimManagerPage() {
 
             {claimsQuery.error ? (
               <TableRow>
-                <TableCell className="font-body text-sm text-terracotta-dark" colSpan={7}>
+                <TableCell className="font-body text-sm text-terracotta-dark" colSpan={9}>
                   Claims could not load.
                 </TableCell>
               </TableRow>
@@ -232,7 +309,7 @@ export default function AdminClaimManagerPage() {
 
             {!claimsQuery.isLoading && !claimsQuery.error && claims.length === 0 ? (
               <TableRow>
-                <TableCell className="font-body text-sm text-[#777]" colSpan={7}>
+                <TableCell className="font-body text-sm text-[#777]" colSpan={9}>
                   No claims match this view.
                 </TableCell>
               </TableRow>
@@ -268,6 +345,58 @@ export default function AdminClaimManagerPage() {
                   </TableCell>
                   <TableCell>
                     <Badge className={statusClassNames[claim.status]}>{claim.status}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    <select
+                      aria-label={`Interpretation frame for ${claim.statement}`}
+                      className="h-9 w-[170px] rounded border border-0.5 border-black/15 bg-stone px-2 font-body text-xs text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-verdigris disabled:opacity-60"
+                      disabled={frameMutation.isPending}
+                      value={claim.interpretation_frame ?? ''}
+                      onChange={(event) =>
+                        frameMutation.mutate({
+                          claim,
+                          frame: event.target.value
+                            ? (event.target.value as InterpretationFrame)
+                            : null,
+                        })
+                      }
+                    >
+                      <option value="">No frame</option>
+                      {interpretationFrames.map((frame) => (
+                        <option key={frame} value={frame}>
+                          {interpretationFrameLabels[frame]}
+                        </option>
+                      ))}
+                    </select>
+                  </TableCell>
+                  <TableCell>
+                    {role === 'super_admin' ? (
+                      <button
+                        aria-label={`Set ${claim.statement} as canonical`}
+                        className={cn(
+                          'inline-flex items-center gap-1 rounded border px-2 py-1 font-body text-xs transition-colors',
+                          claim.is_canonical
+                            ? 'border-amber-300 bg-amber-50 text-amber-800'
+                            : 'border-black/15 bg-stone text-[#777] hover:text-ink'
+                        )}
+                        disabled={canonicalMutation.isPending}
+                        type="button"
+                        onClick={() =>
+                          canonicalMutation.mutate({
+                            claim,
+                            value: !claim.is_canonical,
+                          })
+                        }
+                      >
+                        <Crown aria-hidden="true" className="h-3 w-3" />
+                        {claim.is_canonical ? 'Canonical' : 'Set'}
+                      </button>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 font-body text-xs text-[#777]">
+                        <Lock aria-hidden="true" className="h-3 w-3" />
+                        {claim.is_canonical ? 'Canonical' : 'Locked'}
+                      </span>
+                    )}
                   </TableCell>
                   <TableCell>
                     <ConfidenceOverrideInput
@@ -375,6 +504,47 @@ export default function AdminClaimManagerPage() {
           </Button>
         </div>
       </div>
+
+      <Dialog
+        open={canonicalConflictTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setCanonicalConflictTarget(null)
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Replace Canonical Claim?</DialogTitle>
+            <DialogDescription>
+              Another canonical claim already exists for one of this claim&apos;s entities. Replace
+              it?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-5 flex justify-end gap-3">
+            <DialogClose asChild>
+              <Button type="button" variant="outline">
+                Cancel
+              </Button>
+            </DialogClose>
+            <Button
+              disabled={canonicalMutation.isPending}
+              type="button"
+              onClick={() => {
+                if (canonicalConflictTarget) {
+                  canonicalMutation.mutate({
+                    claim: canonicalConflictTarget,
+                    forceReplace: true,
+                    value: true,
+                  })
+                }
+              }}
+            >
+              Replace
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -6,9 +6,20 @@ import { AttestationBar } from '@/components/entity/AttestationBar'
 import { EntityBadge } from '@/components/entity/EntityBadge'
 import { EntityChip } from '@/components/entity/EntityChip'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
-import { getEntityBySlug, getPublishedEntities } from '@/lib/api/entities'
+import { getEntityPreviewWithClaims, getPublishedEntities } from '@/lib/api/entities'
 import { getAllPublishedRelationships } from '@/lib/api/relationships'
+import { truncateText } from '@/lib/format'
 import { useGraphStore } from '@/stores/graphStore'
+import type { InterpretationFrame } from '@/types/domain'
+
+const frameLabels: Record<InterpretationFrame, string> = {
+  canonical_rem: 'Canonical REM',
+  disputed_alternative: 'Disputed alternative',
+  external_academic: 'External academic',
+  historical_record: 'Historical record',
+  literary_artistic: 'Literary & artistic',
+  supporting_context: 'Supporting context',
+}
 
 export const GraphSidePanel = () => {
   const activeNodeId = useGraphStore((state) => state.activeNodeId)
@@ -28,12 +39,14 @@ export const GraphSidePanel = () => {
 
   const activeEntityRow = entities.find((entity) => entity.id === activeNodeId)
 
-  const { data: entity = activeEntityRow } = useQuery({
-    queryKey: ['entity', activeEntityRow?.slug],
-    queryFn: () => getEntityBySlug(activeEntityRow?.slug ?? ''),
-    enabled: activeEntityRow !== undefined,
+  const { data: preview } = useQuery({
+    queryKey: ['entity', activeNodeId, 'preview-claims'],
+    queryFn: () => getEntityPreviewWithClaims(activeNodeId ?? ''),
+    enabled: activeNodeId !== null && activeEntityRow !== undefined,
     staleTime: 60_000,
   })
+  const entity = preview?.entity ?? activeEntityRow
+  const previewClaims = preview?.previewClaims ?? []
 
   const topConnections = useMemo(() => {
     if (!activeNodeId) {
@@ -111,6 +124,39 @@ export const GraphSidePanel = () => {
             <p className="font-body text-[13px] leading-reading text-ink/75">
               {entity.description ?? 'No summary has been published for this entity yet.'}
             </p>
+
+            {previewClaims.length > 0 ? (
+              <div className="flex flex-col gap-2">
+                <p className="font-display text-[8px] uppercase tracking-label text-ink/45">
+                  Key interpretations
+                </p>
+                <div className="grid gap-2">
+                  {previewClaims.map((claim) => (
+                    <Link
+                      key={claim.id}
+                      className="rounded border border-0.5 border-black/[0.09] bg-white p-3 hover:bg-stone/60"
+                      to={`/claim/${claim.id}`}
+                    >
+                      <div className="mb-2 flex flex-wrap gap-1.5">
+                        {claim.is_canonical ? (
+                          <span className="rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 font-display text-[7px] uppercase tracking-badge text-amber-800">
+                            Canonical
+                          </span>
+                        ) : null}
+                        {claim.interpretation_frame ? (
+                          <span className="rounded border border-black/10 bg-stone px-1.5 py-0.5 font-display text-[7px] uppercase tracking-badge text-[#666]">
+                            {frameLabels[claim.interpretation_frame]}
+                          </span>
+                        ) : null}
+                      </div>
+                      <p className="font-body text-[12px] leading-meta text-ink">
+                        {truncateText(claim.statement, 120)}
+                      </p>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            ) : null}
 
             <div className="flex flex-col gap-2">
               <p className="font-display text-[8px] uppercase tracking-label text-ink/45">

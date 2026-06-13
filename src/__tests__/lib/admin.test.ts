@@ -7,15 +7,14 @@ import {
   applySourceRealtimeChange,
   createSourceFilePath,
   getPipelineRerunAction,
+  normalizeUrlIngestionDomain,
   sanitizeSourceFilename,
   sortSourcesByCreatedAt,
   type AdminSourceRow,
 } from '@/lib/api/admin'
+import { ROUTES } from '@/constants/routes'
 import { detectSourceFormat, normalizeSourceUrl, validateSourceFile } from '@/lib/sourceUpload'
-import {
-  normalizeSourceUrlForDedup,
-  parseAndNormalizeSourceUrlForStorage,
-} from '@/lib/sourceUrl'
+import { normalizeSourceUrlForDedup, parseAndNormalizeSourceUrlForStorage } from '@/lib/sourceUrl'
 
 const createSource = (
   id: string,
@@ -23,17 +22,22 @@ const createSource = (
   overrides: Partial<AdminSourceRow> = {}
 ): AdminSourceRow => ({
   authors: [],
+  attribution: null,
+  category: null,
+  crawl_date: null,
   created_at: createdAt,
   description: null,
   duration_seconds: null,
   file_path: null,
   format: 'audio',
   id,
+  license: null,
   page_count: null,
   pipeline_error: null,
   pipeline_stage: 'uploaded',
   pipeline_stage_entered_at: createdAt,
   publication_date: null,
+  rights_notes: null,
   status: 'draft',
   tier: 'primary',
   title: `Source ${id}`,
@@ -161,6 +165,21 @@ describe('admin API helpers', () => {
     })
 
     expect(action.functionName).toBe('trigger-chunking')
+  })
+
+  it('normalizes URL ingestion domains to hostnames', () => {
+    expect(normalizeUrlIngestionDomain('https://Example.com/path')).toBe('example.com')
+    expect(normalizeUrlIngestionDomain('example.com/path')).toBe('example.com')
+  })
+
+  it('rejects invalid URL ingestion domains', () => {
+    expect(() => normalizeUrlIngestionDomain('')).toThrow('Domain is required')
+    expect(() => normalizeUrlIngestionDomain('not-a-domain')).toThrow('valid domain')
+  })
+
+  it('defines admin creation routes as shared constants', () => {
+    expect(ROUTES.ADMIN_ENTITY_NEW).toBe('/admin/entities/new')
+    expect(ROUTES.ADMIN_CLAIM_NEW).toBe('/admin/claims/new')
   })
 })
 
@@ -290,6 +309,19 @@ describe('admin dashboard migration', () => {
     expect(extractionFunction).toContain('raw_response: claudeResult.rawText')
     expect(extractionFunction).not.toContain('includeRawResponse')
     expect(extractionFunction).toContain('countWords(chunk.raw_text)')
+  })
+
+  it('keeps URL fetch retries stage-safe and caps downloads', () => {
+    const urlFetchFunction = readFileSync(
+      join(process.cwd(), 'supabase/functions/trigger-url-fetch/index.ts'),
+      'utf8'
+    )
+
+    expect(urlFetchFunction).toContain("source.pipeline_stage !== 'chunking_failed'")
+    expect(urlFetchFunction).toContain('maxDownloadBytes = 1_500_000')
+    expect(urlFetchFunction).toContain('readResponseTextWithLimit(response)')
+    expect(urlFetchFunction).toContain('unsupported content type')
+    expect(urlFetchFunction).not.toContain('response.text()')
   })
 
   it('uses direct entity evidence and safe relationship lookups for confidence', () => {
@@ -436,16 +468,14 @@ describe('admin dashboard migration', () => {
     expect(adminApi).toContain('const sourceClaimIds = new Set(await getSourceClaimIds(sourceId))')
     expect(adminApi).toContain('requestedClaimIds.filter((claimId) => sourceClaimIds.has(claimId))')
     expect(sourceImpactPage).toContain("claim.status === 'published'")
-    expect(sourceImpactPage).toContain(
-      "claim.status === 'published' || claim.status === 'draft'"
-    )
+    expect(sourceImpactPage).toContain("claim.status === 'published' || claim.status === 'draft'")
     expect(sourceImpactPage).toContain('claimIds: action ===')
   })
 
   it('writes entity status audit events before publish confidence recomputation', () => {
     const adminApi = readFileSync(join(process.cwd(), 'src/lib/api/admin.ts'), 'utf8')
     const auditIndex = adminApi.indexOf("insertAdminAuditEvent('update_entity_status'")
-    const recomputeIndex = adminApi.indexOf("recomputeConfidenceInBatches([entityId])")
+    const recomputeIndex = adminApi.indexOf('recomputeConfidenceInBatches([entityId])')
 
     expect(auditIndex).toBeGreaterThan(-1)
     expect(recomputeIndex).toBeGreaterThan(-1)

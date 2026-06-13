@@ -18,8 +18,11 @@ export const ROUTES = {
   ADMIN_SOURCE_IMPACT: '/admin/sources/:id/impact',
   ADMIN_REVIEW: '/admin/review',
   ADMIN_ENTITIES: '/admin/entities',
+  ADMIN_ENTITY_NEW: '/admin/entities/new',
   ADMIN_CLAIMS: '/admin/claims',
+  ADMIN_CLAIM_NEW: '/admin/claims/new',
   ADMIN_RELATIONSHIPS: '/admin/relationships',
   ADMIN_SETTINGS: '/admin/settings',
+  ADMIN_URL_DOMAINS: '/admin/settings/url-domains',
   ADMIN_EXPLORATION_NEW: '/admin/explorations/new',
 } as const

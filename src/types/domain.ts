@@ -14,6 +14,16 @@ export type SourceFormat = 'audio' | 'video' | 'text' | 'book' | 'url'
 
 export type SourceTier = 'primary' | 'secondary'
 
+export type SourceCategory =
+  | 'primary_rem'
+  | 'secondary_rem'
+  | 'external_academic'
+  | 'historical_record'
+  | 'literary_artistic'
+  | 'community_submitted'
+
+export type { InterpretationFrame } from '@/lib/api/admin'
+
 export type PipelineStage =
   | 'uploaded'
   | 'transcribing'
@@ -69,11 +79,16 @@ export interface Source {
   publication_date: string | null
   format: SourceFormat
   tier: SourceTier
+  category: SourceCategory | null
   url: string | null
   file_path: string | null
   duration_seconds: number | null
   page_count: number | null
   pipeline_stage: PipelineStage
+  crawl_date?: string | null
+  license?: string | null
+  rights_notes?: string | null
+  attribution?: string | null
   created_at: string
 }
 

@@ -18,9 +18,12 @@ import AdminSourceDetailPage from '@/pages/admin/AdminSourceDetailPage'
 import AdminSourceImpactPage from '@/pages/admin/AdminSourceImpactPage'
 import AdminReviewQueuePage from '@/pages/admin/AdminReviewQueuePage'
 import AdminEntityManagerPage from '@/pages/admin/AdminEntityManagerPage'
+import AdminEntityNewPage from '@/pages/admin/AdminEntityNewPage'
 import AdminClaimManagerPage from '@/pages/admin/AdminClaimManagerPage'
+import AdminClaimNewPage from '@/pages/admin/AdminClaimNewPage'
 import AdminRelationshipManagerPage from '@/pages/admin/AdminRelationshipManagerPage'
 import AdminSettingsPage from '@/pages/admin/AdminSettingsPage'
+import AdminUrlDomainsPage from '@/pages/admin/AdminUrlDomainsPage'
 import ErrorPage from '@/pages/ErrorPage'
 import {
   AdminExplorationEditor,
@@ -30,6 +33,7 @@ import {
   LazyRoute,
   TimelinePage,
 } from '@/routes/phase6Routes'
+import { ROUTES } from '@/constants/routes'
 
 export const router = createBrowserRouter([
   {
@@ -104,7 +108,9 @@ export const router = createBrowserRouter([
           { path: '/admin/sources/:id/impact', element: <AdminSourceImpactPage /> },
           { path: '/admin/review', element: <AdminReviewQueuePage /> },
           { path: '/admin/entities', element: <AdminEntityManagerPage /> },
+          { path: ROUTES.ADMIN_ENTITY_NEW, element: <AdminEntityNewPage /> },
           { path: '/admin/claims', element: <AdminClaimManagerPage /> },
+          { path: ROUTES.ADMIN_CLAIM_NEW, element: <AdminClaimNewPage /> },
           { path: '/admin/relationships', element: <AdminRelationshipManagerPage /> },
           {
             path: '/admin/explorations/new',
@@ -115,6 +121,7 @@ export const router = createBrowserRouter([
             ),
           },
           { path: '/admin/settings', element: <AdminSettingsPage /> },
+          { path: '/admin/settings/url-domains', element: <AdminUrlDomainsPage /> },
         ],
       },
     ],

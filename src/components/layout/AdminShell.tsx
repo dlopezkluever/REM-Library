@@ -7,6 +7,7 @@ import {
   FileText,
   GitPullRequestDraft,
   GitBranch,
+  Globe,
   LogOut,
   ScrollText,
   Settings,
@@ -16,21 +17,23 @@ import { ROUTES } from '@/constants/routes'
 import { useAuth } from '@/hooks/useAuth'
 import { cn } from '@/lib/utils'
 
-const navItems = [
-  { to: ROUTES.ADMIN_DASHBOARD, label: 'Dashboard', icon: BarChart3 },
-  { to: ROUTES.ADMIN_SOURCES, label: 'Sources', icon: BookOpen },
-  { to: ROUTES.ADMIN_REVIEW, label: 'Review Queue', icon: GitPullRequestDraft },
-  { to: ROUTES.ADMIN_ENTITIES, label: 'Entities', icon: ScrollText },
-  { to: ROUTES.ADMIN_CLAIMS, label: 'Claims', icon: FileText },
-  { to: ROUTES.ADMIN_RELATIONSHIPS, label: 'Relationships', icon: GitBranch },
-  { to: ROUTES.ADMIN_EXPLORATION_NEW, label: 'New Exploration', icon: Compass },
-  { to: ROUTES.ADMIN_SETTINGS, label: 'Settings', icon: Settings },
-]
-
 export const AdminShell = () => {
   const navigate = useNavigate()
-  const { signOut, user } = useAuth()
+  const { role, signOut, user } = useAuth()
   const [signOutError, setSignOutError] = useState<string | null>(null)
+  const navItems = [
+    { to: ROUTES.ADMIN_DASHBOARD, label: 'Dashboard', icon: BarChart3 },
+    { to: ROUTES.ADMIN_SOURCES, label: 'Sources', icon: BookOpen },
+    { to: ROUTES.ADMIN_REVIEW, label: 'Review Queue', icon: GitPullRequestDraft },
+    { to: ROUTES.ADMIN_ENTITIES, label: 'Entities', icon: ScrollText },
+    { to: ROUTES.ADMIN_CLAIMS, label: 'Claims', icon: FileText },
+    { to: ROUTES.ADMIN_RELATIONSHIPS, label: 'Relationships', icon: GitBranch },
+    { to: ROUTES.ADMIN_EXPLORATION_NEW, label: 'New Exploration', icon: Compass },
+    ...(role === 'super_admin'
+      ? [{ to: ROUTES.ADMIN_URL_DOMAINS, label: 'URL Domains', icon: Globe }]
+      : []),
+    { to: ROUTES.ADMIN_SETTINGS, label: 'Settings', icon: Settings },
+  ]
 
   const handleSignOut = async () => {
     setSignOutError(null)

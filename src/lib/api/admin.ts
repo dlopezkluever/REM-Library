@@ -7,6 +7,8 @@ export type EntityType = Enums<'entity_type'>
 export type ContentStatus = Enums<'content_status'>
 export type SourceFormat = Enums<'source_format'>
 export type SourceTier = Enums<'source_tier'>
+export type SourceCategory = Enums<'source_category'>
+export type InterpretationFrame = Enums<'interpretation_frame'>
 export type PipelineStage = Enums<'pipeline_stage'>
 export type ExtractionStatus = Enums<'extraction_status'>
 export type RelationshipType = Enums<'relationship_type'>
@@ -54,6 +56,7 @@ export interface SourceUploadProgress {
 
 export interface CreateAdminSourceInput {
   authors: string[]
+  category?: SourceCategory
   description: string | null
   filePath: string | null
   format: SourceFormat
@@ -63,6 +66,25 @@ export interface CreateAdminSourceInput {
   title: string
   url: string | null
 }
+
+export interface CreateAdminEntityInput {
+  dateEra: string | null
+  dateSortYear: number | null
+  description: string | null
+  name: string
+  status: Extract<ContentStatus, 'draft' | 'published'>
+  type: EntityType
+}
+
+export interface CreateAdminClaimInput {
+  content: string
+  entityIds: string[]
+  interpretationFrame: InterpretationFrame | null
+  isCanonical: boolean
+  status: Extract<ContentStatus, 'draft' | 'published'>
+}
+
+export type UrlIngestionDomainRow = Tables<'url_ingestion_config'>
 
 export interface AdminSourceListRow {
   extractionCount: number
@@ -84,6 +106,8 @@ export interface ReviewEntityItem {
 export interface ReviewClaimItem {
   entitiesInvolved: string[]
   evidenceSummary: string
+  interpretationFrame: InterpretationFrame | null
+  isCanonical: boolean
   itemId: string
   kind: 'claim'
   relationshipType: RelationshipType
@@ -126,6 +150,8 @@ export interface SaveEntityReviewInput {
 export interface SaveClaimReviewInput {
   entitiesInvolved: string[]
   evidenceSummary: string
+  interpretationFrame: InterpretationFrame | null
+  isCanonical: boolean
   relationshipType: RelationshipType
   statement: string
 }
@@ -138,6 +164,10 @@ export interface SplitEntityInput {
 export type ReviewActionInput =
   | {
       action: 'confirm'
+      confirmClaimMeta?: {
+        interpretationFrame: InterpretationFrame | null
+        isCanonical: boolean
+      }
       extractionId: string
       itemId: string
       itemKind: 'entity' | 'claim'
@@ -183,6 +213,7 @@ export interface PipelineRerunAction {
 }
 
 export interface ReviewActionResult {
+  canonicalConflict?: boolean
   createdIds: string[]
   rowStatus: ExtractionStatus
 }
@@ -269,6 +300,41 @@ const relationshipTypes: RelationshipType[] = [
   'instantiates',
   'supports',
 ]
+export const interpretationFrames: InterpretationFrame[] = [
+  'canonical_rem',
+  'supporting_context',
+  'external_academic',
+  'historical_record',
+  'literary_artistic',
+  'disputed_alternative',
+]
+
+export const sourceCategories: SourceCategory[] = [
+  'primary_rem',
+  'secondary_rem',
+  'external_academic',
+  'historical_record',
+  'literary_artistic',
+  'community_submitted',
+]
+
+export const interpretationFrameLabels: Record<InterpretationFrame, string> = {
+  canonical_rem: 'Canonical REM',
+  disputed_alternative: 'Disputed alternative',
+  external_academic: 'External academic',
+  historical_record: 'Historical record',
+  literary_artistic: 'Literary & artistic',
+  supporting_context: 'Supporting context',
+}
+
+export const sourceCategoryLabels: Record<SourceCategory, string> = {
+  community_submitted: 'Community submitted',
+  external_academic: 'External academic',
+  historical_record: 'Historical record',
+  literary_artistic: 'Literary & artistic',
+  primary_rem: 'Primary REM',
+  secondary_rem: 'Secondary REM',
+}
 
 const confidenceBuckets = [
   { label: '0-0.19', min: 0, max: 0.2 },
@@ -314,6 +380,10 @@ const isRelationshipType = (value: unknown): value is RelationshipType => {
   return typeof value === 'string' && relationshipTypes.some((type) => type === value)
 }
 
+const isInterpretationFrame = (value: unknown): value is InterpretationFrame => {
+  return typeof value === 'string' && interpretationFrames.some((frame) => frame === value)
+}
+
 export const getEffectiveRelationshipWeight = (
   relationship: Pick<AdminRelationshipRow, 'weight' | 'weight_override'>
 ) => relationship.weight_override ?? relationship.weight
@@ -329,6 +399,10 @@ const toNullableTrimmedString = (value: unknown) => {
 }
 
 const normalizeName = (name: string) => name.trim().replace(/\s+/g, ' ')
+
+const sourceTierFromCategory = (category: SourceCategory): SourceTier => {
+  return category === 'primary_rem' || category === 'secondary_rem' ? 'primary' : 'secondary'
+}
 
 const uniqueIds = (values: string[]) => {
   return Array.from(new Set(values.filter((value) => Boolean(value))))
@@ -420,6 +494,10 @@ const parseReviewItems = (extractionData: Json): ReviewItem[] => {
           {
             entitiesInvolved: toStringArray(item.entities_involved),
             evidenceSummary: toNullableTrimmedString(item.evidence_summary) ?? '',
+            interpretationFrame: isInterpretationFrame(item.interpretation_frame)
+              ? item.interpretation_frame
+              : null,
+            isCanonical: item.is_canonical === true,
             itemId: getItemId(item, `claim-${index}`),
             kind: 'claim',
             relationshipType: item.relationship_type,
@@ -570,6 +648,22 @@ const getCurrentAdminUserId = async () => {
   return data.user?.id ?? null
 }
 
+const getCurrentAdminRole = async () => {
+  const userId = await getCurrentAdminUserId()
+
+  if (!userId) {
+    return null
+  }
+
+  const { data, error } = await supabase.from('profiles').select('role').eq('id', userId).single()
+
+  if (error) {
+    throw error
+  }
+
+  return data.role
+}
+
 const insertAdminAuditEvent = async (
   action: string,
   targetTable: string,
@@ -590,8 +684,10 @@ const insertAdminAuditEvent = async (
 }
 
 export const createAdminSource = async (input: CreateAdminSourceInput) => {
+  const tier = input.category ? sourceTierFromCategory(input.category) : input.tier
   const row: TablesInsert<'sources'> = {
     authors: input.authors,
+    category: input.category ?? null,
     description: input.description,
     file_path: input.filePath,
     format: input.format,
@@ -599,7 +695,7 @@ export const createAdminSource = async (input: CreateAdminSourceInput) => {
     pipeline_stage: 'uploaded',
     publication_date: input.publicationDate,
     status: 'draft',
-    tier: input.tier,
+    tier,
     title: input.title,
     url: input.url,
   }
@@ -618,9 +714,7 @@ export interface EntityTimelineDates {
   date_sort_year: number | null
 }
 
-export const getEntityTimelineDates = async (
-  entityId: string
-): Promise<EntityTimelineDates> => {
+export const getEntityTimelineDates = async (entityId: string): Promise<EntityTimelineDates> => {
   const { data, error } = await supabase
     .from('entities')
     .select('date_era, date_sort_year')
@@ -678,6 +772,22 @@ export const getPipelineRerunAction = (
   }
 
   if (stage === 'chunking' || stage === 'chunking_failed') {
+    if (source?.format === 'url') {
+      if (stage === 'chunking_failed') {
+        return {
+          disabledReason: 'Use the Fetch URL button to re-fetch this URL source.',
+          functionName: null,
+          label: 'Run extraction',
+        }
+      }
+
+      return {
+        disabledReason: null,
+        functionName: 'trigger-extraction',
+        label: 'Run extraction',
+      }
+    }
+
     if (!source?.transcript_id) {
       return {
         disabledReason: 'Chunking cannot run until a transcript id exists.',
@@ -704,7 +814,8 @@ export const getPipelineRerunAction = (
   if (stage === 'uploaded' || stage === 'transcribing' || stage === 'transcribing_failed') {
     if (source && (source.format === 'url' || !source.file_path)) {
       return {
-        disabledReason: 'Automatic URL ingestion is not available yet.',
+        disabledReason:
+          'URL ingestion requires Fetch URL for URL-format sources before running extraction.',
         functionName: null,
         label: 'URL ingestion pending',
       }
@@ -887,7 +998,12 @@ export const getSourceImpact = async (sourceId: string): Promise<AdminSourceImpa
 
   const [entitiesResult, claimsResult, claimEntityLinksResult] = await Promise.all([
     entityIds.length > 0
-      ? supabase.from('entities').select('*').in('id', entityIds).neq('status', 'archived').order('name')
+      ? supabase
+          .from('entities')
+          .select('*')
+          .in('id', entityIds)
+          .neq('status', 'archived')
+          .order('name')
       : Promise.resolve({ data: [] as AdminEntityRow[], error: null }),
     claimIds.length > 0
       ? supabase
@@ -901,7 +1017,10 @@ export const getSourceImpact = async (sourceId: string): Promise<AdminSourceImpa
       : Promise.resolve({ data: [] as AdminClaimRow[], error: null }),
     claimIds.length > 0
       ? supabase.from('claim_entities').select('claim_id, entity_id').in('claim_id', claimIds)
-      : Promise.resolve({ data: [] as Array<{ claim_id: string; entity_id: string }>, error: null }),
+      : Promise.resolve({
+          data: [] as Array<{ claim_id: string; entity_id: string }>,
+          error: null,
+        }),
   ])
 
   if (entitiesResult.error) {
@@ -982,6 +1101,154 @@ export const updateSourceTier = async (sourceId: string, tier: SourceTier) => {
   return data
 }
 
+export const updateSourceCategory = async (sourceId: string, category: SourceCategory) => {
+  const { data: currentSource, error: currentSourceError } = await supabase
+    .from('sources')
+    .select('category,tier')
+    .eq('id', sourceId)
+    .single()
+
+  if (currentSourceError) {
+    throw currentSourceError
+  }
+
+  const tier = sourceTierFromCategory(category)
+  const { data, error } = await supabase
+    .from('sources')
+    .update({ category, tier })
+    .eq('id', sourceId)
+    .select('*')
+    .single()
+
+  if (error) {
+    throw error
+  }
+
+  await insertAdminAuditEvent('update_source_category', 'sources', sourceId, {
+    new_category: category,
+    new_tier: tier,
+    old_category: currentSource.category,
+    old_tier: currentSource.tier,
+  })
+
+  return data
+}
+
+export const updateSourceRightsMetadata = async (
+  sourceId: string,
+  values: Pick<TablesUpdate<'sources'>, 'attribution' | 'license' | 'rights_notes'>
+) => {
+  const { data, error } = await supabase
+    .from('sources')
+    .update(values)
+    .eq('id', sourceId)
+    .select('*')
+    .single()
+
+  if (error) {
+    throw error
+  }
+
+  await insertAdminAuditEvent('update_source_rights_metadata', 'sources', sourceId, values as Json)
+
+  return data
+}
+
+export const triggerUrlFetch = async (sourceId: string) => {
+  const { data, error } = await supabase.functions.invoke('trigger-url-fetch', {
+    body: { source_id: sourceId },
+  })
+
+  if (error) {
+    throw error
+  }
+
+  return data as { chunks_created?: number; pipeline_stage?: string; source_id?: string }
+}
+
+export const listUrlIngestionDomains = async (): Promise<UrlIngestionDomainRow[]> => {
+  const { data, error } = await supabase
+    .from('url_ingestion_config')
+    .select('*')
+    .order('domain', { ascending: true })
+
+  if (error) {
+    throw error
+  }
+
+  return data
+}
+
+export const normalizeUrlIngestionDomain = (domain: string) => {
+  const trimmedDomain = domain.trim().toLowerCase()
+
+  if (!trimmedDomain) {
+    throw new Error('Domain is required.')
+  }
+
+  let url: URL
+
+  try {
+    url = new URL(
+      trimmedDomain.startsWith('http://') || trimmedDomain.startsWith('https://')
+        ? trimmedDomain
+        : `https://${trimmedDomain}`
+    )
+  } catch {
+    throw new Error('Enter a valid domain, such as example.com.')
+  }
+
+  const hostname = url.hostname.replace(/\.$/, '')
+
+  if (!hostname || !hostname.includes('.')) {
+    throw new Error('Enter a valid domain, such as example.com.')
+  }
+
+  return hostname
+}
+
+export const createUrlIngestionDomain = async (domain: string) => {
+  const normalizedDomain = normalizeUrlIngestionDomain(domain)
+
+  const { data, error } = await supabase
+    .from('url_ingestion_config')
+    .insert({
+      added_by: await getCurrentAdminUserId(),
+      domain: normalizedDomain,
+    })
+    .select('*')
+    .single()
+
+  if (error) {
+    throw error
+  }
+
+  await insertAdminAuditEvent('create_url_ingestion_domain', 'url_ingestion_config', data.id, {
+    domain: normalizedDomain,
+  })
+
+  return data
+}
+
+export const updateUrlIngestionDomainEnabled = async (domainId: string, enabled: boolean) => {
+  const { data, error } = await supabase
+    .from('url_ingestion_config')
+    .update({ enabled })
+    .eq('id', domainId)
+    .select('*')
+    .single()
+
+  if (error) {
+    throw error
+  }
+
+  await insertAdminAuditEvent('update_url_ingestion_domain', 'url_ingestion_config', domainId, {
+    enabled,
+  })
+
+  return data
+}
+
 export const getAdminSourceListRows = async (): Promise<AdminSourceListRow[]> => {
   const { data, error } = await supabase.rpc('get_admin_source_list_rows', {
     page_limit: adminSourceListLimit,
@@ -993,19 +1260,25 @@ export const getAdminSourceListRows = async (): Promise<AdminSourceListRow[]> =>
   }
 
   return data.map((row) => {
+    // The list RPC does not yet expose Phase 2 source metadata columns; detail views fetch them.
     const source: AdminSourceRow = {
       authors: row.authors,
+      attribution: null,
+      category: null,
+      crawl_date: null,
       created_at: row.created_at,
       description: row.description,
       duration_seconds: row.duration_seconds,
       file_path: row.file_path,
       format: row.format,
       id: row.id,
+      license: null,
       page_count: row.page_count,
       pipeline_stage: row.pipeline_stage,
       pipeline_stage_entered_at: row.pipeline_stage_entered_at,
       pipeline_error: row.pipeline_error,
       publication_date: row.publication_date,
+      rights_notes: null,
       status: row.status,
       tier: row.tier,
       title: row.title,
@@ -1216,6 +1489,205 @@ export const searchAdminEntities = async (search: string) => {
   return (await getAdminEntitiesPage({ search: query })).entities.slice(0, 10)
 }
 
+const getAvailableEntitySlug = async (name: string) => {
+  const baseSlug = slugifyEntityName(name)
+
+  for (let suffix = 0; suffix < 100; suffix += 1) {
+    const slug = suffix === 0 ? baseSlug : `${baseSlug}-${suffix + 1}`
+    const { count, error } = await supabase
+      .from('entities')
+      .select('id', { count: 'exact', head: true })
+      .eq('slug', slug)
+
+    if (error) {
+      throw error
+    }
+
+    if (requireCount(count) === 0) {
+      return slug
+    }
+  }
+
+  return `${baseSlug}-${crypto.randomUUID().slice(0, 8)}`
+}
+
+export const createAdminEntity = async (input: CreateAdminEntityInput) => {
+  const name = normalizeName(input.name)
+
+  if (!name) {
+    throw new Error('Entity name is required.')
+  }
+
+  const row: TablesInsert<'entities'> = {
+    aliases: [],
+    date_era: input.dateEra,
+    date_sort_year: input.dateSortYear,
+    description: input.description,
+    name,
+    slug: await getAvailableEntitySlug(name),
+    status: input.status,
+    type: input.type,
+  }
+
+  const { data, error } = await supabase.from('entities').insert(row).select('*').single()
+
+  if (error) {
+    throw error
+  }
+
+  await insertAdminAuditEvent('create_manual_entity', 'entities', data.id, {
+    name: data.name,
+    status: data.status,
+    type: data.type,
+  })
+
+  return data
+}
+
+export interface SetClaimCanonicalResult {
+  claim_id?: string
+  conflict: boolean
+  existingCanonicalClaimId?: string
+  is_canonical?: boolean
+  replaced_claim_id?: string | null
+}
+
+const isSetClaimCanonicalResult = (value: unknown): value is SetClaimCanonicalResult => {
+  return isObjectRecord(value) && typeof value.conflict === 'boolean'
+}
+
+export const updateClaimInterpretationFrame = async (
+  claimId: string,
+  frame: InterpretationFrame | null
+) => {
+  const { data: currentClaim, error: currentClaimError } = await supabase
+    .from('claims')
+    .select('interpretation_frame')
+    .eq('id', claimId)
+    .single()
+
+  if (currentClaimError) {
+    throw currentClaimError
+  }
+
+  const { data, error } = await supabase
+    .from('claims')
+    .update({ interpretation_frame: frame })
+    .eq('id', claimId)
+    .select('*')
+    .single()
+
+  if (error) {
+    throw error
+  }
+
+  await insertAdminAuditEvent('update_claim_interpretation_frame', 'claims', claimId, {
+    new_frame: frame,
+    old_frame: currentClaim.interpretation_frame,
+  })
+
+  return data
+}
+
+export const setClaimCanonical = async (
+  claimId: string,
+  value: boolean,
+  forceReplace = false
+): Promise<SetClaimCanonicalResult> => {
+  const { data, error } = await supabase.rpc('set_claim_canonical', {
+    claim_id: claimId,
+    force_replace: forceReplace,
+    next_is_canonical: value,
+  })
+
+  if (error) {
+    throw error
+  }
+
+  if (!isSetClaimCanonicalResult(data)) {
+    throw new Error('Canonical update returned an invalid payload.')
+  }
+
+  return data
+}
+
+export const createAdminClaim = async (input: CreateAdminClaimInput) => {
+  const statement = input.content.trim()
+  const entityIds = uniqueIds(input.entityIds)
+
+  if (!statement) {
+    throw new Error('Claim content is required.')
+  }
+
+  if (entityIds.length === 0) {
+    throw new Error('At least one entity is required.')
+  }
+
+  if (input.isCanonical) {
+    const role = await getCurrentAdminRole()
+
+    if (role !== 'super_admin') {
+      throw new Error('Only super admins can set canonical claims.')
+    }
+  }
+
+  const { data: claim, error: claimError } = await supabase
+    .from('claims')
+    .insert({
+      author_id: await getCurrentAdminUserId(),
+      interpretation_frame: input.interpretationFrame,
+      statement,
+      status: input.status,
+    })
+    .select('*')
+    .single()
+
+  if (claimError) {
+    throw claimError
+  }
+
+  const { error: linkError } = await supabase.from('claim_entities').insert(
+    entityIds.map((entityId) => ({
+      claim_id: claim.id,
+      entity_id: entityId,
+    }))
+  )
+
+  if (linkError) {
+    throw linkError
+  }
+
+  if (input.isCanonical) {
+    const canonicalResult = await setClaimCanonical(claim.id, true)
+
+    if (canonicalResult.conflict) {
+      await insertAdminAuditEvent('create_manual_claim', 'claims', claim.id, {
+        canonical_conflict: true,
+        entity_ids: entityIds,
+        interpretation_frame: input.interpretationFrame,
+        is_canonical: false,
+        status: input.status,
+      })
+
+      return {
+        ...claim,
+        canonicalConflict: true,
+        existingCanonicalClaimId: canonicalResult.existingCanonicalClaimId ?? null,
+        is_canonical: false,
+      }
+    }
+  }
+
+  await insertAdminAuditEvent('create_manual_claim', 'claims', claim.id, {
+    entity_ids: entityIds,
+    interpretation_frame: input.interpretationFrame,
+    is_canonical: input.isCanonical,
+    status: input.status,
+  })
+
+  return { ...claim, is_canonical: input.isCanonical }
+}
+
 export const updateAdminEntityStatus = async (entityId: string, status: ContentStatus) => {
   const { data: currentEntity, error: currentEntityError } = await supabase
     .from('entities')
@@ -1251,10 +1723,7 @@ export const updateAdminEntityStatus = async (entityId: string, status: ContentS
   return data
 }
 
-export const updateEntityConfidenceOverride = async (
-  entityId: string,
-  override: number | null
-) => {
+export const updateEntityConfidenceOverride = async (entityId: string, override: number | null) => {
   if (override !== null) {
     requireBoundedNumber(override, 'Entity confidence override', 0, 1)
   }
@@ -1348,6 +1817,8 @@ export const getAdminClaimsPage = async ({
       entityNames: row.entity_names,
       evidenceCount: row.evidence_count,
       id: row.id,
+      interpretation_frame: row.interpretation_frame,
+      is_canonical: row.is_canonical,
       statement: row.statement,
       status: row.status,
       updated_at: row.updated_at,
@@ -1495,10 +1966,7 @@ export const getAdminRelationships = async ({
   search = '',
   status = null,
 }: GetAdminRelationshipsOptions = {}): Promise<AdminRelationshipPage> => {
-  const resolvedPageSize = Math.max(
-    1,
-    Math.min(Math.floor(pageSize), adminRelationshipMaxPageSize)
-  )
+  const resolvedPageSize = Math.max(1, Math.min(Math.floor(pageSize), adminRelationshipMaxPageSize))
   const pageOffset = Math.max(0, page) * resolvedPageSize
   const searchEntityIds = await getRelationshipSearchEntityIds(search)
 
@@ -1621,8 +2089,7 @@ export const updateRelationshipWeight = async (relationshipId: string, weight: n
 
   await insertAdminAuditEvent('update_relationship_weight', 'relationships', relationshipId, {
     new_weight_override: weight,
-    old_effective_weight:
-      currentRelationship.weight_override ?? currentRelationship.weight,
+    old_effective_weight: currentRelationship.weight_override ?? currentRelationship.weight,
     old_weight_override: currentRelationship.weight_override,
   })
 
@@ -1761,7 +2228,48 @@ export const reviewExtractionItem = async (
     throw new Error('Review action returned an invalid payload.')
   }
 
-  return data
+  const reviewResult: ReviewActionResult = data
+
+  if (input.action === 'edit' && input.itemKind === 'claim' && input.claim) {
+    const createdClaimId = reviewResult.createdIds[0]
+
+    if (createdClaimId) {
+      if (input.claim.interpretationFrame !== null) {
+        await updateClaimInterpretationFrame(createdClaimId, input.claim.interpretationFrame)
+      }
+
+      if (input.claim.isCanonical) {
+        const result = await setClaimCanonical(createdClaimId, true)
+
+        if (result.conflict) {
+          return { ...reviewResult, canonicalConflict: true }
+        }
+      }
+    }
+  }
+
+  if (input.action === 'confirm' && input.itemKind === 'claim' && input.confirmClaimMeta) {
+    const createdClaimId = reviewResult.createdIds[0]
+
+    if (createdClaimId) {
+      if (input.confirmClaimMeta.interpretationFrame !== null) {
+        await updateClaimInterpretationFrame(
+          createdClaimId,
+          input.confirmClaimMeta.interpretationFrame
+        )
+      }
+
+      if (input.confirmClaimMeta.isCanonical) {
+        const result = await setClaimCanonical(createdClaimId, true)
+
+        if (result.conflict) {
+          return { ...reviewResult, canonicalConflict: true }
+        }
+      }
+    }
+  }
+
+  return reviewResult
 }
 
 export const rejectFailedExtraction = async (extractionId: string): Promise<ReviewActionResult> => {
@@ -1795,7 +2303,9 @@ export const adminSourceTitleExists = async (title: string) => {
 
 export const normalizeSourceUrl = normalizeSourceUrlForDedup
 
-export const adminSourceUrlExists = async (url: string): Promise<AdminSourceUrlDuplicate | null> => {
+export const adminSourceUrlExists = async (
+  url: string
+): Promise<AdminSourceUrlDuplicate | null> => {
   const normalizedUrl = normalizeSourceUrlForDedup(url)
 
   if (!normalizedUrl) {
@@ -1901,10 +2411,18 @@ const pipelineStages: Array<AdminSourceRow['pipeline_stage']> = [
 ]
 
 const sourceFormats: Array<AdminSourceRow['format']> = ['audio', 'video', 'text', 'book', 'url']
+const sourceCategoriesSet: Array<NonNullable<AdminSourceRow['category']>> = [
+  'primary_rem',
+  'secondary_rem',
+  'external_academic',
+  'historical_record',
+  'literary_artistic',
+  'community_submitted',
+]
 const sourceTiers: Array<AdminSourceRow['tier']> = ['primary', 'secondary']
 
 const isObjectRecord = (value: unknown): value is Record<string, unknown> => {
-  return typeof value === 'object' && value !== null
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 const isStringArray = (value: unknown): value is string[] => {
@@ -1931,6 +2449,13 @@ const isSourceTier = (value: unknown): value is AdminSourceRow['tier'] => {
   return typeof value === 'string' && sourceTiers.some((tier) => tier === value)
 }
 
+const isNullableSourceCategory = (value: unknown): value is AdminSourceRow['category'] => {
+  return (
+    value === null ||
+    (typeof value === 'string' && sourceCategoriesSet.some((category) => category === value))
+  )
+}
+
 const isContentStatus = (value: unknown): value is ContentStatus => {
   return typeof value === 'string' && contentStatuses.some((status) => status === value)
 }
@@ -1947,10 +2472,15 @@ const isAdminSourceRow = (value: unknown): value is AdminSourceRow => {
     isNullableString(value.publication_date) &&
     isSourceFormat(value.format) &&
     isSourceTier(value.tier) &&
+    isNullableSourceCategory(value.category) &&
     isNullableString(value.url) &&
     isNullableString(value.file_path) &&
     isNullableNumber(value.duration_seconds) &&
     isNullableNumber(value.page_count) &&
+    isNullableString(value.crawl_date) &&
+    isNullableString(value.license) &&
+    isNullableString(value.rights_notes) &&
+    isNullableString(value.attribution) &&
     isPipelineStage(value.pipeline_stage) &&
     isNullableString(value.pipeline_error) &&
     isContentStatus(value.status) &&

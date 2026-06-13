@@ -13,6 +13,16 @@ const getEffectiveClaimConfidence = (claim: Tables<'claims'>) => {
   return claim.confidence_override ?? claim.confidence_score
 }
 
+const sortClaimsForEntity = (claims: ClaimWithAuthor[]) => {
+  return [...claims].sort((firstClaim, secondClaim) => {
+    if (firstClaim.is_canonical !== secondClaim.is_canonical) {
+      return firstClaim.is_canonical ? -1 : 1
+    }
+
+    return getEffectiveClaimConfidence(secondClaim) - getEffectiveClaimConfidence(firstClaim)
+  })
+}
+
 export const getClaimById = async (id: string): Promise<ClaimWithAuthor> => {
   const { data, error } = await supabase
     .from('claims')
@@ -57,7 +67,24 @@ export const getEntitiesForClaim = async (claimId: string) => {
   return data
 }
 
-export const getClaimsForEntity = async (entityId: string): Promise<ClaimWithAuthor[]> => {
+interface ClaimsForEntityOptions {
+  includeDisputed?: boolean
+}
+
+export interface ClaimsForEntityResult {
+  disputedClaims: ClaimWithAuthor[]
+  publishedClaims: ClaimWithAuthor[]
+}
+
+export async function getClaimsForEntity(entityId: string): Promise<ClaimWithAuthor[]>
+export async function getClaimsForEntity(
+  entityId: string,
+  options: { includeDisputed: true }
+): Promise<ClaimsForEntityResult>
+export async function getClaimsForEntity(
+  entityId: string,
+  options: ClaimsForEntityOptions = {}
+): Promise<ClaimWithAuthor[] | ClaimsForEntityResult> {
   const { data: claimLinks, error: claimLinksError } = await supabase
     .from('claim_entities')
     .select('claim_id')
@@ -70,21 +97,31 @@ export const getClaimsForEntity = async (entityId: string): Promise<ClaimWithAut
   const claimIds = claimLinks.map((claimLink) => claimLink.claim_id)
 
   if (claimIds.length === 0) {
-    return []
+    return options.includeDisputed ? { disputedClaims: [], publishedClaims: [] } : []
   }
 
-  const { data, error } = await supabase
-    .from('claims')
-    .select(CLAIM_WITH_AUTHOR_SELECT)
-    .in('id', claimIds)
-    .eq('status', 'published')
+  const fetchClaimsByStatus = async (status: 'published' | 'disputed') => {
+    const { data, error } = await supabase
+      .from('claims')
+      .select(CLAIM_WITH_AUTHOR_SELECT)
+      .in('id', claimIds)
+      .eq('status', status)
 
-  if (error) {
-    throw error
+    if (error) {
+      throw error
+    }
+
+    return sortClaimsForEntity(data as unknown as ClaimWithAuthor[])
   }
 
-  return [...(data as unknown as ClaimWithAuthor[])].sort(
-    (firstClaim, secondClaim) =>
-      getEffectiveClaimConfidence(secondClaim) - getEffectiveClaimConfidence(firstClaim)
-  )
+  const publishedClaims = await fetchClaimsByStatus('published')
+
+  if (!options.includeDisputed) {
+    return publishedClaims
+  }
+
+  return {
+    disputedClaims: await fetchClaimsByStatus('disputed'),
+    publishedClaims,
+  }
 }
