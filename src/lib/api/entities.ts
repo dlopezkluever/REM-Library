@@ -2,6 +2,7 @@ import { supabase } from '@/lib/supabase/client'
 import type { Tables } from '@/types/database'
 import type { EntityPositionUpdate } from '@/lib/graph/types'
 import type { EntityType } from '@/types/domain'
+import { filterPublicRelationships } from '@/lib/api/relationships'
 
 export type EntityRow = Tables<'entities'>
 export type RelationshipRow = Tables<'relationships'>
@@ -12,11 +13,6 @@ export interface EntityNeighborhood {
 }
 
 const unique = (values: string[]) => Array.from(new Set(values))
-
-const withEffectiveRelationshipWeight = (relationship: RelationshipRow): RelationshipRow => ({
-  ...relationship,
-  weight: relationship.weight_override ?? relationship.weight,
-})
 
 interface PublishedEntityOptions {
   search?: string
@@ -90,7 +86,7 @@ export const getEntityNeighborhood = async (
   id: string,
   hops: 1 | 2 = 1
 ): Promise<EntityNeighborhood> => {
-  const { data: firstHopRelationships, error: firstHopError } = await supabase
+  const { data: firstHopRelationshipRows, error: firstHopError } = await supabase
     .from('relationships')
     .select('*')
     .eq('status', 'active')
@@ -100,6 +96,7 @@ export const getEntityNeighborhood = async (
     throw firstHopError
   }
 
+  const firstHopRelationships = await filterPublicRelationships(firstHopRelationshipRows)
   const firstHopEntityIds = unique(
     firstHopRelationships.flatMap((relationship) => [
       relationship.from_entity_id,
@@ -115,7 +112,7 @@ export const getEntityNeighborhood = async (
       .flatMap((entityId) => [`from_entity_id.eq.${entityId}`, `to_entity_id.eq.${entityId}`])
       .join(',')
 
-    const { data: secondHopRelationships, error: secondHopError } = await supabase
+    const { data: secondHopRelationshipRows, error: secondHopError } = await supabase
       .from('relationships')
       .select('*')
       .eq('status', 'active')
@@ -125,6 +122,7 @@ export const getEntityNeighborhood = async (
       throw secondHopError
     }
 
+    const secondHopRelationships = await filterPublicRelationships(secondHopRelationshipRows)
     relationships = Array.from(
       new Map(
         [...firstHopRelationships, ...secondHopRelationships].map((relationship) => [
@@ -163,7 +161,6 @@ export const getEntityNeighborhood = async (
         visibleEntityIds.has(relationship.from_entity_id) &&
         visibleEntityIds.has(relationship.to_entity_id)
     )
-    .map(withEffectiveRelationshipWeight)
 
   return { entities, relationships: visibleRelationships }
 }

@@ -1239,14 +1239,14 @@ export const updateAdminEntityStatus = async (entityId: string, status: ContentS
     throw error
   }
 
-  if (status === 'published') {
-    await recomputeConfidenceInBatches([entityId])
-  }
-
   await insertAdminAuditEvent('update_entity_status', 'entities', entityId, {
     new_status: status,
     old_status: currentEntity.status,
   })
+
+  if (status === 'published') {
+    await recomputeConfidenceInBatches([entityId])
+  }
 
   return data
 }
@@ -1429,15 +1429,26 @@ export const publishAdminClaims = async (claimIds: string[]) => {
   await recomputeConfidenceInBatches(affectedEntityIds)
 }
 
-const updateSourceClaimsStatus = async (sourceId: string, status: ContentStatus) => {
-  const claimIds = await getSourceClaimIds(sourceId)
+const updateSourceClaimsStatus = async (
+  sourceId: string,
+  status: ContentStatus,
+  claimIds: string[]
+) => {
+  const requestedClaimIds = uniqueStrings(claimIds)
 
-  if (claimIds.length === 0) {
+  if (requestedClaimIds.length === 0) {
+    return { affectedEntityIds: [], claimIds: [] }
+  }
+
+  const sourceClaimIds = new Set(await getSourceClaimIds(sourceId))
+  const scopedClaimIds = requestedClaimIds.filter((claimId) => sourceClaimIds.has(claimId))
+
+  if (scopedClaimIds.length === 0) {
     return { affectedEntityIds: [], claimIds: [] }
   }
 
   const { data: affectedEntityIds, error } = await supabase.rpc('bulk_update_claim_status', {
-    claim_ids: claimIds,
+    claim_ids: scopedClaimIds,
     next_status: status,
   })
 
@@ -1447,15 +1458,15 @@ const updateSourceClaimsStatus = async (sourceId: string, status: ContentStatus)
 
   await recomputeConfidenceInBatches(affectedEntityIds)
 
-  return { affectedEntityIds, claimIds }
+  return { affectedEntityIds, claimIds: scopedClaimIds }
 }
 
-export const unpublishSourceClaims = async (sourceId: string) => {
-  return updateSourceClaimsStatus(sourceId, 'draft')
+export const unpublishSourceClaims = async (sourceId: string, claimIds: string[]) => {
+  return updateSourceClaimsStatus(sourceId, 'draft', claimIds)
 }
 
-export const markSourceClaimsDisputed = async (sourceId: string) => {
-  return updateSourceClaimsStatus(sourceId, 'disputed')
+export const markSourceClaimsDisputed = async (sourceId: string, claimIds: string[]) => {
+  return updateSourceClaimsStatus(sourceId, 'disputed', claimIds)
 }
 
 const getRelationshipSearchEntityIds = async (search: string) => {
