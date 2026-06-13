@@ -186,6 +186,7 @@ const ClaimSection = ({
 export default function EntityDetailPage() {
   const { slug } = useParams()
   const [suggestionOpen, setSuggestionOpen] = useState(false)
+  const [flagEntityOpen, setFlagEntityOpen] = useState(false)
 
   const entityQuery = useQuery({
     queryKey: ['entity', slug],
@@ -357,6 +358,9 @@ export default function EntityDetailPage() {
             <Button size="sm" type="button" variant="outline" onClick={() => setSuggestionOpen(true)}>
               Suggest a claim
             </Button>
+            <Button size="sm" type="button" variant="ghost" onClick={() => setFlagEntityOpen(true)}>
+              Flag this entity
+            </Button>
           </div>
         </header>
 
@@ -494,6 +498,16 @@ export default function EntityDetailPage() {
         title="Suggest a claim"
         type="new_claim"
         onOpenChange={setSuggestionOpen}
+      />
+      <SuggestionDialog
+        open={flagEntityOpen}
+        reasonLabel="Reason for flagging"
+        suggestionLabel="What is incorrect or disputed?"
+        targetEntityId={entity.id}
+        targetLabel={entity.name}
+        title="Flag this entity"
+        type="flag_entity"
+        onOpenChange={setFlagEntityOpen}
       />
     </div>
   )

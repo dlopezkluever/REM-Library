@@ -13,10 +13,12 @@ import {
   getSourceExtractedContent,
 } from '@/lib/api/sources'
 import { formatDate } from '@/lib/format'
+import { cn } from '@/lib/utils'
 
 const isOpenLicense = (license: string | null) => {
   if (!license) {
-    return true
+    // null = license unknown; treat as non-open so fair-use review is prompted
+    return false
   }
 
   const normalized = license.toLowerCase()
@@ -136,7 +138,14 @@ export default function SourceDetailPage() {
               {source.pipeline_stage}
             </span>
             {source.license ? (
-              <span className="rounded border-0.5 border-amber-300 bg-amber-50 px-2 py-0.5 font-display text-[8px] uppercase tracking-badge text-amber-800">
+              <span
+                className={cn(
+                  'rounded border-0.5 px-2 py-0.5 font-display text-[8px] uppercase tracking-badge',
+                  isOpenLicense(source.license)
+                    ? 'border-verdigris/40 bg-verdigris-light text-verdigris-dark'
+                    : 'border-amber-300 bg-amber-50 text-amber-800'
+                )}
+              >
                 {source.license}
               </span>
             ) : null}
