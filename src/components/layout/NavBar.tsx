@@ -165,6 +165,13 @@ export const NavBar = ({ variant }: NavBarProps) => {
         >
           Sources
         </Link>
+        <Link
+          to={ROUTES.REGISTER}
+          className={isActive(ROUTES.REGISTER) ? activeLinkClass : navLinkClass}
+          onClick={closeSearch}
+        >
+          Register
+        </Link>
         <div className="relative">
           <button
             className={cn(
