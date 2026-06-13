@@ -35,19 +35,18 @@ export const InlineMediaPlayer = ({
   useEffect(() => {
     let cancelled = false
     retryCountRef.current = 0
-    setLoading(true)
-    setFailed(false)
-    setSignedUrl(null)
 
     void doFetch().then(
       (url) => {
         if (!cancelled) {
+          setFailed(false)
           setSignedUrl(url)
           setLoading(false)
         }
       },
       () => {
         if (!cancelled) {
+          setSignedUrl(null)
           setFailed(true)
           setLoading(false)
         }

@@ -68,18 +68,6 @@ const decodeEntities = (text: string) => {
     .replace(/&#39;/gi, "'")
 }
 
-const stripHtmlToText = (html: string) =>
-  decodeEntities(
-    html
-      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-      .replace(/<[^>]+>/g, ' ')
-  )
-    .replace(/\s+/g, ' ')
-    .trim()
-
-const wordCount = (text: string) => text.match(/\S+/g)?.length ?? 0
-
 const titleFromHtml = (html: string, fallbackUrl: string) => {
   const title = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]
   const cleanedTitle = title ? decodeEntities(title).replace(/\s+/g, ' ').trim() : ''
