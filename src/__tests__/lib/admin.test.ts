@@ -410,8 +410,45 @@ describe('admin dashboard migration', () => {
     const entitiesApi = readFileSync(join(process.cwd(), 'src/lib/api/entities.ts'), 'utf8')
 
     expect(relationshipsApi).toContain(".eq('status', 'active')")
+    expect(relationshipsApi).toContain("from('entities')")
+    expect(relationshipsApi).toContain("from('claims')")
+    expect(relationshipsApi).toContain(".eq('status', 'published')")
+    expect(relationshipsApi).toContain('relationship.claim_ids.some')
     expect(relationshipsApi).toContain('relationship.weight_override ?? relationship.weight')
     expect(entitiesApi).toContain(".eq('status', 'active')")
-    expect(entitiesApi).toContain('relationship.weight_override ?? relationship.weight')
+    expect(entitiesApi).toContain('filterPublicRelationships(firstHopRelationshipRows)')
+    expect(entitiesApi).toContain('filterPublicRelationships(secondHopRelationshipRows)')
+  })
+
+  it('scopes source impact bulk claim actions to explicit visible claim ids', () => {
+    const adminApi = readFileSync(join(process.cwd(), 'src/lib/api/admin.ts'), 'utf8')
+    const sourceImpactPage = readFileSync(
+      join(process.cwd(), 'src/pages/admin/AdminSourceImpactPage.tsx'),
+      'utf8'
+    )
+
+    expect(adminApi).toContain(
+      'export const unpublishSourceClaims = async (sourceId: string, claimIds: string[])'
+    )
+    expect(adminApi).toContain(
+      'export const markSourceClaimsDisputed = async (sourceId: string, claimIds: string[])'
+    )
+    expect(adminApi).toContain('const sourceClaimIds = new Set(await getSourceClaimIds(sourceId))')
+    expect(adminApi).toContain('requestedClaimIds.filter((claimId) => sourceClaimIds.has(claimId))')
+    expect(sourceImpactPage).toContain("claim.status === 'published'")
+    expect(sourceImpactPage).toContain(
+      "claim.status === 'published' || claim.status === 'draft'"
+    )
+    expect(sourceImpactPage).toContain('claimIds: action ===')
+  })
+
+  it('writes entity status audit events before publish confidence recomputation', () => {
+    const adminApi = readFileSync(join(process.cwd(), 'src/lib/api/admin.ts'), 'utf8')
+    const auditIndex = adminApi.indexOf("insertAdminAuditEvent('update_entity_status'")
+    const recomputeIndex = adminApi.indexOf("recomputeConfidenceInBatches([entityId])")
+
+    expect(auditIndex).toBeGreaterThan(-1)
+    expect(recomputeIndex).toBeGreaterThan(-1)
+    expect(auditIndex).toBeLessThan(recomputeIndex)
   })
 })
