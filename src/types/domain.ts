@@ -22,13 +22,7 @@ export type SourceCategory =
   | 'literary_artistic'
   | 'community_submitted'
 
-export type InterpretationFrame =
-  | 'canonical_rem'
-  | 'supporting_context'
-  | 'external_academic'
-  | 'historical_record'
-  | 'literary_artistic'
-  | 'disputed_alternative'
+export type { InterpretationFrame } from '@/lib/api/admin'
 
 export type PipelineStage =
   | 'uploaded'

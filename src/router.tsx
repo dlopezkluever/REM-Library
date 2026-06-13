@@ -33,6 +33,7 @@ import {
   LazyRoute,
   TimelinePage,
 } from '@/routes/phase6Routes'
+import { ROUTES } from '@/constants/routes'
 
 export const router = createBrowserRouter([
   {
@@ -107,9 +108,9 @@ export const router = createBrowserRouter([
           { path: '/admin/sources/:id/impact', element: <AdminSourceImpactPage /> },
           { path: '/admin/review', element: <AdminReviewQueuePage /> },
           { path: '/admin/entities', element: <AdminEntityManagerPage /> },
-          { path: '/admin/entities/new', element: <AdminEntityNewPage /> },
+          { path: ROUTES.ADMIN_ENTITY_NEW, element: <AdminEntityNewPage /> },
           { path: '/admin/claims', element: <AdminClaimManagerPage /> },
-          { path: '/admin/claims/new', element: <AdminClaimNewPage /> },
+          { path: ROUTES.ADMIN_CLAIM_NEW, element: <AdminClaimNewPage /> },
           { path: '/admin/relationships', element: <AdminRelationshipManagerPage /> },
           {
             path: '/admin/explorations/new',
