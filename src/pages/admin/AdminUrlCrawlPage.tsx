@@ -12,11 +12,56 @@ import {
 } from '@/lib/api/admin'
 import { ROUTES } from '@/constants/routes'
 
+type CrawlCandidate = Awaited<ReturnType<typeof triggerSiteCrawl>>['created'][number]
+
 const getErrorMessage = (error: unknown) =>
   error instanceof Error ? error.message : 'Site crawl failed.'
 
-export default function AdminUrlCrawlPage() {
+function CrawlResultRow({ source }: { source: CrawlCandidate }) {
   const queryClient = useQueryClient()
+  const processMutation = useMutation({
+    mutationFn: () => triggerUrlFetch(source.id),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'source-list'] })
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'sources'] })
+    },
+  })
+
+  return (
+    <div className="grid gap-3 p-4 md:grid-cols-[minmax(0,1fr)_auto]">
+      <div className="min-w-0">
+        <Link
+          className="font-body text-sm font-semibold text-ink hover:text-verdigris"
+          to={`/admin/sources/${source.id}`}
+        >
+          {source.title}
+        </Link>
+        <p className="truncate font-body text-xs text-[#777]">{source.url}</p>
+      </div>
+      <div className="flex flex-col items-end gap-1">
+        <Button
+          disabled={processMutation.isPending || processMutation.isSuccess}
+          size="sm"
+          type="button"
+          variant="outline"
+          onClick={() => processMutation.mutate()}
+        >
+          {processMutation.isPending ? (
+            <RefreshCw aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+          ) : null}
+          {processMutation.isSuccess ? 'Queued' : 'Process'}
+        </Button>
+        {processMutation.isError ? (
+          <p className="font-body text-xs text-terracotta-dark">
+            {getErrorMessage(processMutation.error)}
+          </p>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+export default function AdminUrlCrawlPage() {
   const [rootUrl, setRootUrl] = useState('')
   const [crawlResult, setCrawlResult] = useState<Awaited<ReturnType<typeof triggerSiteCrawl>> | null>(
     null
@@ -28,18 +73,8 @@ export default function AdminUrlCrawlPage() {
 
   const crawlMutation = useMutation({
     mutationFn: () => triggerSiteCrawl(rootUrl),
-    onSuccess: async (result) => {
+    onSuccess: (result) => {
       setCrawlResult(result)
-      await queryClient.invalidateQueries({ queryKey: ['admin', 'source-list'] })
-      await queryClient.invalidateQueries({ queryKey: ['admin', 'sources'] })
-    },
-  })
-
-  const processMutation = useMutation({
-    mutationFn: triggerUrlFetch,
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['admin', 'source-list'] })
-      await queryClient.invalidateQueries({ queryKey: ['admin', 'sources'] })
     },
   })
 
@@ -103,9 +138,9 @@ export default function AdminUrlCrawlPage() {
         </Button>
       </form>
 
-      {crawlMutation.error || processMutation.error ? (
+      {crawlMutation.error ? (
         <p className="rounded border border-terracotta/30 bg-terracotta-light p-3 font-body text-sm text-terracotta-dark">
-          {getErrorMessage(crawlMutation.error ?? processMutation.error)}
+          {getErrorMessage(crawlMutation.error)}
         </p>
       ) : null}
 
@@ -117,34 +152,17 @@ export default function AdminUrlCrawlPage() {
             </h2>
             <p className="mt-1 font-body text-xs text-[#777]">
               {crawlResult.created.length} created, {crawlResult.skipped.length} skipped.
+              {crawlResult.truncated ? (
+                <span className="ml-2 text-amber-700">
+                  Showing first 50 of {crawlResult.total_discovered} discovered URLs.
+                </span>
+              ) : null}
             </p>
           </div>
           {crawlResult.created.length > 0 ? (
             <div className="divide-y divide-black/[0.06]">
               {crawlResult.created.map((source) => (
-                <div key={source.id} className="grid gap-3 p-4 md:grid-cols-[minmax(0,1fr)_auto]">
-                  <div className="min-w-0">
-                    <Link
-                      className="font-body text-sm font-semibold text-ink hover:text-verdigris"
-                      to={`/admin/sources/${source.id}`}
-                    >
-                      {source.title}
-                    </Link>
-                    <p className="truncate font-body text-xs text-[#777]">{source.url}</p>
-                    <p className="font-body text-xs text-[#888]">
-                      Estimated {source.word_count} words
-                    </p>
-                  </div>
-                  <Button
-                    disabled={processMutation.isPending}
-                    size="sm"
-                    type="button"
-                    variant="outline"
-                    onClick={() => processMutation.mutate(source.id)}
-                  >
-                    Process
-                  </Button>
-                </div>
+                <CrawlResultRow key={source.id} source={source} />
               ))}
             </div>
           ) : (

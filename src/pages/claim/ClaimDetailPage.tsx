@@ -41,6 +41,7 @@ export default function ClaimDetailPage() {
   const { id } = useParams()
   const [openMediaAnchorId, setOpenMediaAnchorId] = useState<string | null>(null)
   const [suggestionOpen, setSuggestionOpen] = useState(false)
+  const [flagClaimOpen, setFlagClaimOpen] = useState(false)
 
   const claimQuery = useQuery({
     queryKey: ['claim', id],
@@ -132,6 +133,9 @@ export default function ClaimDetailPage() {
             <CopyLinkButton />
             <Button size="sm" type="button" variant="outline" onClick={() => setSuggestionOpen(true)}>
               Suggest a correction
+            </Button>
+            <Button size="sm" type="button" variant="ghost" onClick={() => setFlagClaimOpen(true)}>
+              Flag this claim
             </Button>
           </div>
         </header>
@@ -270,6 +274,16 @@ export default function ClaimDetailPage() {
         title="Suggest a correction"
         type="claim_correction"
         onOpenChange={setSuggestionOpen}
+      />
+      <SuggestionDialog
+        open={flagClaimOpen}
+        reasonLabel="Reason for flagging"
+        suggestionLabel="What is incorrect or disputed?"
+        targetClaimId={claim.id}
+        targetLabel={claim.statement}
+        title="Flag this claim"
+        type="flag_claim"
+        onOpenChange={setFlagClaimOpen}
       />
     </div>
   )
