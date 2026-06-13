@@ -7,10 +7,12 @@ import {
   applySourceRealtimeChange,
   createSourceFilePath,
   getPipelineRerunAction,
+  normalizeUrlIngestionDomain,
   sanitizeSourceFilename,
   sortSourcesByCreatedAt,
   type AdminSourceRow,
 } from '@/lib/api/admin'
+import { ROUTES } from '@/constants/routes'
 import { detectSourceFormat, normalizeSourceUrl, validateSourceFile } from '@/lib/sourceUpload'
 import { normalizeSourceUrlForDedup, parseAndNormalizeSourceUrlForStorage } from '@/lib/sourceUrl'
 
@@ -164,6 +166,21 @@ describe('admin API helpers', () => {
 
     expect(action.functionName).toBe('trigger-chunking')
   })
+
+  it('normalizes URL ingestion domains to hostnames', () => {
+    expect(normalizeUrlIngestionDomain('https://Example.com/path')).toBe('example.com')
+    expect(normalizeUrlIngestionDomain('example.com/path')).toBe('example.com')
+  })
+
+  it('rejects invalid URL ingestion domains', () => {
+    expect(() => normalizeUrlIngestionDomain('')).toThrow('Domain is required')
+    expect(() => normalizeUrlIngestionDomain('not-a-domain')).toThrow('valid domain')
+  })
+
+  it('defines admin creation routes as shared constants', () => {
+    expect(ROUTES.ADMIN_ENTITY_NEW).toBe('/admin/entities/new')
+    expect(ROUTES.ADMIN_CLAIM_NEW).toBe('/admin/claims/new')
+  })
 })
 
 describe('source upload helpers', () => {
@@ -292,6 +309,19 @@ describe('admin dashboard migration', () => {
     expect(extractionFunction).toContain('raw_response: claudeResult.rawText')
     expect(extractionFunction).not.toContain('includeRawResponse')
     expect(extractionFunction).toContain('countWords(chunk.raw_text)')
+  })
+
+  it('keeps URL fetch retries stage-safe and caps downloads', () => {
+    const urlFetchFunction = readFileSync(
+      join(process.cwd(), 'supabase/functions/trigger-url-fetch/index.ts'),
+      'utf8'
+    )
+
+    expect(urlFetchFunction).toContain("source.pipeline_stage !== 'chunking_failed'")
+    expect(urlFetchFunction).toContain('maxDownloadBytes = 1_500_000')
+    expect(urlFetchFunction).toContain('readResponseTextWithLimit(response)')
+    expect(urlFetchFunction).toContain('unsupported content type')
+    expect(urlFetchFunction).not.toContain('response.text()')
   })
 
   it('uses direct entity evidence and safe relationship lookups for confidence', () => {
