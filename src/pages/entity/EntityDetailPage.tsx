@@ -44,17 +44,90 @@ const claimSort = (firstClaim: ClaimWithAuthor, secondClaim: ClaimWithAuthor) =>
 
 const ClaimSection = ({
   claims,
+  collapsible = false,
   disputed = false,
   heroFirst = false,
   title,
 }: {
   claims: ClaimWithAuthor[]
+  collapsible?: boolean
   disputed?: boolean
   heroFirst?: boolean
   title: string
 }) => {
   if (claims.length === 0) {
     return null
+  }
+
+  const header = (
+    <div>
+      <h3 className="font-display text-[10px] uppercase tracking-label text-ink">{title}</h3>
+      {disputed ? (
+        <p className="mt-1 font-body text-xs text-terracotta-dark">
+          These readings are marked as disputed by curators.
+        </p>
+      ) : null}
+    </div>
+  )
+
+  const body = (
+    <div className="overflow-hidden rounded-lg border-0.5 border-black/10 bg-white">
+      {claims.map((claim, index) => {
+        const hero = heroFirst && index === 0 && claim.is_canonical
+
+        return (
+          <Link
+            key={claim.id}
+            to={`/claim/${claim.id}`}
+            className={`block border-b-0.5 border-black/[0.06] p-4 transition-colors last:border-b-0 hover:bg-stone/60 ${
+              hero ? 'border-l-4 border-l-verdigris bg-verdigris-light/40' : ''
+            }`}
+          >
+            <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+              <div>
+                <div className="mb-2 flex flex-wrap gap-2">
+                  {claim.is_canonical ? (
+                    <span className="rounded border border-amber-300 bg-amber-50 px-2 py-0.5 font-display text-[8px] uppercase tracking-badge text-amber-800">
+                      Canonical
+                    </span>
+                  ) : null}
+                  {claim.interpretation_frame ? (
+                    <span className="rounded border border-black/10 bg-stone px-2 py-0.5 font-display text-[8px] uppercase tracking-badge text-[#666]">
+                      {frameLabels[claim.interpretation_frame]}
+                    </span>
+                  ) : null}
+                </div>
+                <p
+                  className={`font-body leading-meta text-ink ${
+                    hero ? 'text-[15px]' : 'text-[13px]'
+                  }`}
+                >
+                  {truncateText(claim.statement, hero ? 260 : 180)}
+                </p>
+                <p className="mt-1 font-body text-[11px] italic text-[#777]">
+                  {claim.profiles?.display_name ?? 'Unknown researcher'}
+                </p>
+              </div>
+              <ConfidenceBadge score={getEffectiveConfidence(claim)} />
+            </div>
+          </Link>
+        )
+      })}
+    </div>
+  )
+
+  if (collapsible) {
+    return (
+      <details className="group space-y-3">
+        <summary className="cursor-pointer list-none">
+          {header}
+          <span className="mt-1 block font-body text-xs text-[#777] group-open:hidden">
+            Show {claims.length} claim{claims.length === 1 ? '' : 's'}
+          </span>
+        </summary>
+        {body}
+      </details>
+    )
   }
 
   return (
@@ -67,49 +140,7 @@ const ClaimSection = ({
           </p>
         ) : null}
       </div>
-      <div className="overflow-hidden rounded-lg border-0.5 border-black/10 bg-white">
-        {claims.map((claim, index) => {
-          const hero = heroFirst && index === 0 && claim.is_canonical
-
-          return (
-            <Link
-              key={claim.id}
-              to={`/claim/${claim.id}`}
-              className={`block border-b-0.5 border-black/[0.06] p-4 transition-colors last:border-b-0 hover:bg-stone/60 ${
-                hero ? 'border-l-4 border-l-verdigris bg-verdigris-light/40' : ''
-              }`}
-            >
-              <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
-                <div>
-                  <div className="mb-2 flex flex-wrap gap-2">
-                    {claim.is_canonical ? (
-                      <span className="rounded border border-amber-300 bg-amber-50 px-2 py-0.5 font-display text-[8px] uppercase tracking-badge text-amber-800">
-                        Canonical
-                      </span>
-                    ) : null}
-                    {claim.interpretation_frame ? (
-                      <span className="rounded border border-black/10 bg-stone px-2 py-0.5 font-display text-[8px] uppercase tracking-badge text-[#666]">
-                        {frameLabels[claim.interpretation_frame]}
-                      </span>
-                    ) : null}
-                  </div>
-                  <p
-                    className={`font-body leading-meta text-ink ${
-                      hero ? 'text-[15px]' : 'text-[13px]'
-                    }`}
-                  >
-                    {truncateText(claim.statement, hero ? 260 : 180)}
-                  </p>
-                  <p className="mt-1 font-body text-[11px] italic text-[#777]">
-                    {claim.profiles?.display_name ?? 'Unknown researcher'}
-                  </p>
-                </div>
-                <ConfidenceBadge score={getEffectiveConfidence(claim)} />
-              </div>
-            </Link>
-          )
-        })}
-      </div>
+      {body}
     </section>
   )
 }
@@ -320,7 +351,12 @@ export default function EntityDetailPage() {
                 claims={claimsByFrame('literary_artistic')}
                 title="Literary & Artistic"
               />
-              <ClaimSection claims={otherClaims} title="Other Claims" />
+              <ClaimSection
+                claims={claimsByFrame('disputed_alternative')}
+                disputed
+                title="Disputed Alternative Readings"
+              />
+              <ClaimSection claims={otherClaims} collapsible title="Other Claims" />
               <ClaimSection claims={disputedClaims} disputed title="Disputed Readings" />
             </div>
           ) : null}

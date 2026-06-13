@@ -90,41 +90,46 @@ export default function AdminUrlDomainsPage() {
       ) : null}
 
       <section className="overflow-hidden rounded border border-0.5 border-black/[0.09] bg-white">
-        {(domainsQuery.data ?? []).map((row) => (
-          <div
-            key={row.id}
-            className="flex items-center justify-between gap-4 border-b border-b-0.5 border-b-black/[0.06] p-4 last:border-b-0"
-          >
-            <div>
-              <p className="font-body text-sm text-ink">{row.domain}</p>
-              <p className="font-body text-xs text-[#777]">
-                Added {new Date(row.created_at).toLocaleDateString()}
-              </p>
-            </div>
-            <div className="flex items-center gap-3">
-              <Badge variant={row.enabled ? 'default' : 'outline'}>
-                {row.enabled ? 'Enabled' : 'Disabled'}
-              </Badge>
-              <Button
-                disabled={toggleMutation.isPending}
-                size="sm"
-                type="button"
-                variant="outline"
-                onClick={() =>
-                  toggleMutation.mutate({
-                    enabled: !row.enabled,
-                    id: row.id,
-                  })
-                }
-              >
-                {row.enabled ? 'Disable' : 'Enable'}
-              </Button>
-            </div>
-          </div>
-        ))}
-        {!domainsQuery.isLoading && (domainsQuery.data ?? []).length === 0 ? (
+        {domainsQuery.isLoading ? (
+          <p className="p-4 font-body text-sm text-[#777]">Loading domains...</p>
+        ) : domainsQuery.error ? (
+          <p className="p-4 font-body text-sm text-terracotta-dark">Domains could not load.</p>
+        ) : (domainsQuery.data ?? []).length === 0 ? (
           <p className="p-4 font-body text-sm text-[#777]">No domains configured.</p>
-        ) : null}
+        ) : (
+          (domainsQuery.data ?? []).map((row) => (
+            <div
+              key={row.id}
+              className="flex items-center justify-between gap-4 border-b border-b-0.5 border-b-black/[0.06] p-4 last:border-b-0"
+            >
+              <div>
+                <p className="font-body text-sm text-ink">{row.domain}</p>
+                <p className="font-body text-xs text-[#777]">
+                  Added {new Date(row.created_at).toLocaleDateString()}
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <Badge variant={row.enabled ? 'default' : 'outline'}>
+                  {row.enabled ? 'Enabled' : 'Disabled'}
+                </Badge>
+                <Button
+                  disabled={toggleMutation.isPending}
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                  onClick={() =>
+                    toggleMutation.mutate({
+                      enabled: !row.enabled,
+                      id: row.id,
+                    })
+                  }
+                >
+                  {row.enabled ? 'Disable' : 'Enable'}
+                </Button>
+              </div>
+            </div>
+          ))
+        )}
       </section>
     </div>
   )
