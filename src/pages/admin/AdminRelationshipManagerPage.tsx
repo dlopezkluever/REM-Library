@@ -37,6 +37,7 @@ import {
   restoreRelationship,
   updateRelationshipWeight,
   type AdminRelationshipListRow,
+  type ContentStatus,
   type RelationshipStatus,
 } from '@/lib/api/admin'
 import { cn } from '@/lib/utils'
@@ -46,6 +47,13 @@ const adminRelationshipsQueryKey = ['admin', 'relationships'] as const
 const statusClassNames: Record<RelationshipStatus, string> = {
   active: 'border-verdigris bg-verdigris-light text-verdigris-dark',
   archived: 'border-terracotta/25 bg-terracotta-light text-terracotta-dark',
+}
+
+const claimStatusClassNames: Record<ContentStatus, string> = {
+  archived: 'border-terracotta/25 bg-terracotta-light text-terracotta-dark',
+  disputed: 'border-amber-300/70 bg-amber-50 text-amber-800',
+  draft: 'border-iris/30 bg-iris-light text-iris-dark',
+  published: 'border-verdigris bg-verdigris-light text-verdigris-dark',
 }
 
 const formatRelationshipType = (type: string) => {
@@ -430,7 +438,7 @@ export default function AdminRelationshipManagerPage() {
                                 >
                                   <div>
                                     <p className="line-clamp-2 text-ink">{claim.statement}</p>
-                                    <Badge className={cn('mt-1', statusClassNames.active)}>
+                                    <Badge className={cn('mt-1', claimStatusClassNames[claim.status])}>
                                       {claim.status}
                                     </Badge>
                                   </div>

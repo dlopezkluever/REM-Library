@@ -59,6 +59,7 @@ const getMutationError = (error: unknown) => {
 }
 
 type BulkAction = 'dispute-claims' | 'unpublish-claims'
+type BulkMutationInput = { action: BulkAction; claimIds: string[] }
 type ImpactStatusFilter = 'all' | 'published' | 'draft' | 'disputed'
 
 const impactStatusFilters: Array<{ label: string; value: ImpactStatusFilter }> = [
@@ -122,10 +123,10 @@ export default function AdminSourceImpactPage() {
   })
 
   const bulkMutation = useMutation({
-    mutationFn: (action: BulkAction) =>
+    mutationFn: ({ action, claimIds }: BulkMutationInput) =>
       action === 'unpublish-claims'
-        ? unpublishSourceClaims(sourceId)
-        : markSourceClaimsDisputed(sourceId),
+        ? unpublishSourceClaims(sourceId, claimIds)
+        : markSourceClaimsDisputed(sourceId, claimIds),
     onSuccess: async () => {
       await invalidateImpactQueries(queryClient, sourceId)
     },
@@ -140,6 +141,12 @@ export default function AdminSourceImpactPage() {
       : allEntities.filter((entity) => entity.status === statusFilter)
   const claims =
     statusFilter === 'all' ? allClaims : allClaims.filter((claim) => claim.status === statusFilter)
+  const unpublishClaimIds = claims
+    .filter((claim) => claim.status === 'published')
+    .map((claim) => claim.id)
+  const disputeClaimIds = claims
+    .filter((claim) => claim.status === 'published' || claim.status === 'draft')
+    .map((claim) => claim.id)
   const actionError = entityStatusMutation.error ?? claimStatusMutation.error ?? bulkMutation.error
   const isLoading = sourceQuery.isLoading || impactQuery.isLoading
   const hasError = sourceQuery.error || impactQuery.error
@@ -210,9 +217,15 @@ export default function AdminSourceImpactPage() {
           />
 
           <BulkActionBar
-            claimCount={allClaims.length}
-            disabled={bulkMutation.isPending || allClaims.length === 0}
-            onConfirm={(action) => bulkMutation.mutate(action)}
+            disabled={bulkMutation.isPending}
+            disputeCount={disputeClaimIds.length}
+            unpublishCount={unpublishClaimIds.length}
+            onConfirm={(action) =>
+              bulkMutation.mutate({
+                action,
+                claimIds: action === 'unpublish-claims' ? unpublishClaimIds : disputeClaimIds,
+              })
+            }
           />
 
           <EntitiesSection entities={entities} mutation={entityStatusMutation} />
@@ -276,12 +289,14 @@ const StatusFilterTabs = ({
 )
 
 const BulkActionBar = ({
-  claimCount,
   disabled,
+  disputeCount,
+  unpublishCount,
   onConfirm,
 }: {
-  claimCount: number
   disabled: boolean
+  disputeCount: number
+  unpublishCount: number
   onConfirm: (action: BulkAction) => void
 }) => {
   return (
@@ -289,23 +304,27 @@ const BulkActionBar = ({
       <div>
         <h2 className="font-display text-sm uppercase tracking-label text-ink">Bulk Actions</h2>
         <p className="mt-1 font-body text-xs text-[#777]">
-          Apply status changes to all claims linked to this source.
+          Apply status changes to eligible claims in the current filter.
         </p>
       </div>
       <div className="flex flex-wrap gap-2">
         <ConfirmBulkActionButton
           action="unpublish-claims"
-          confirmText="Unpublish all claims linked to this source? They will move to draft."
-          disabled={disabled}
-          label={`Unpublish all claims (${claimCount})`}
+          confirmText={`Unpublish ${unpublishCount} published claim${
+            unpublishCount === 1 ? '' : 's'
+          } in the current filter? They will move to draft.`}
+          disabled={disabled || unpublishCount === 0}
+          label={`Unpublish published (${unpublishCount})`}
           title="Unpublish Claims"
           onConfirm={onConfirm}
         />
         <ConfirmBulkActionButton
           action="dispute-claims"
-          confirmText="Mark all claims linked to this source as disputed?"
-          disabled={disabled}
-          label={`Mark all disputed (${claimCount})`}
+          confirmText={`Mark ${disputeCount} published or draft claim${
+            disputeCount === 1 ? '' : 's'
+          } in the current filter as disputed?`}
+          disabled={disabled || disputeCount === 0}
+          label={`Mark disputed (${disputeCount})`}
           title="Mark Claims Disputed"
           onConfirm={onConfirm}
         />
