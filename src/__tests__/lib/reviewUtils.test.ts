@@ -59,9 +59,9 @@ describe('validateEntityInput', () => {
   })
 
   it('returns an error for an empty name', () => {
-    expect(
-      validateEntityInput({ aliases: [], description: null, name: '', type: 'symbol' })
-    ).toBe('Entity name is required.')
+    expect(validateEntityInput({ aliases: [], description: null, name: '', type: 'symbol' })).toBe(
+      'Entity name is required.'
+    )
   })
 
   it('returns an error for a whitespace-only name', () => {
@@ -72,7 +72,12 @@ describe('validateEntityInput', () => {
 
   it('returns null for a valid entity input', () => {
     expect(
-      validateEntityInput({ aliases: [], description: null, name: 'The World Tree', type: 'symbol' })
+      validateEntityInput({
+        aliases: [],
+        description: null,
+        name: 'The World Tree',
+        type: 'symbol',
+      })
     ).toBeNull()
   })
 })
@@ -87,6 +92,8 @@ describe('validateClaimInput', () => {
       validateClaimInput({
         entitiesInvolved: ['Entity A'],
         evidenceSummary: 'some evidence',
+        interpretationFrame: null,
+        isCanonical: false,
         relationshipType: 'symbolizes',
         statement: '',
       })
@@ -98,6 +105,8 @@ describe('validateClaimInput', () => {
       validateClaimInput({
         entitiesInvolved: [],
         evidenceSummary: 'some evidence',
+        interpretationFrame: null,
+        isCanonical: false,
         relationshipType: 'symbolizes',
         statement: 'A symbolizes B',
       })
@@ -109,6 +118,8 @@ describe('validateClaimInput', () => {
       validateClaimInput({
         entitiesInvolved: ['The World Tree'],
         evidenceSummary: 'The tree connects all realms',
+        interpretationFrame: null,
+        isCanonical: false,
         relationshipType: 'symbolizes',
         statement: 'The World Tree symbolizes cosmic order',
       })

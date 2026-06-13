@@ -12,10 +12,7 @@ import {
   type AdminSourceRow,
 } from '@/lib/api/admin'
 import { detectSourceFormat, normalizeSourceUrl, validateSourceFile } from '@/lib/sourceUpload'
-import {
-  normalizeSourceUrlForDedup,
-  parseAndNormalizeSourceUrlForStorage,
-} from '@/lib/sourceUrl'
+import { normalizeSourceUrlForDedup, parseAndNormalizeSourceUrlForStorage } from '@/lib/sourceUrl'
 
 const createSource = (
   id: string,
@@ -23,17 +20,22 @@ const createSource = (
   overrides: Partial<AdminSourceRow> = {}
 ): AdminSourceRow => ({
   authors: [],
+  attribution: null,
+  category: null,
+  crawl_date: null,
   created_at: createdAt,
   description: null,
   duration_seconds: null,
   file_path: null,
   format: 'audio',
   id,
+  license: null,
   page_count: null,
   pipeline_error: null,
   pipeline_stage: 'uploaded',
   pipeline_stage_entered_at: createdAt,
   publication_date: null,
+  rights_notes: null,
   status: 'draft',
   tier: 'primary',
   title: `Source ${id}`,
@@ -436,16 +438,14 @@ describe('admin dashboard migration', () => {
     expect(adminApi).toContain('const sourceClaimIds = new Set(await getSourceClaimIds(sourceId))')
     expect(adminApi).toContain('requestedClaimIds.filter((claimId) => sourceClaimIds.has(claimId))')
     expect(sourceImpactPage).toContain("claim.status === 'published'")
-    expect(sourceImpactPage).toContain(
-      "claim.status === 'published' || claim.status === 'draft'"
-    )
+    expect(sourceImpactPage).toContain("claim.status === 'published' || claim.status === 'draft'")
     expect(sourceImpactPage).toContain('claimIds: action ===')
   })
 
   it('writes entity status audit events before publish confidence recomputation', () => {
     const adminApi = readFileSync(join(process.cwd(), 'src/lib/api/admin.ts'), 'utf8')
     const auditIndex = adminApi.indexOf("insertAdminAuditEvent('update_entity_status'")
-    const recomputeIndex = adminApi.indexOf("recomputeConfidenceInBatches([entityId])")
+    const recomputeIndex = adminApi.indexOf('recomputeConfidenceInBatches([entityId])')
 
     expect(auditIndex).toBeGreaterThan(-1)
     expect(recomputeIndex).toBeGreaterThan(-1)
