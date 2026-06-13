@@ -25,6 +25,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { ENTITY_LABELS } from '@/constants/entityTypes'
+import { ROUTES } from '@/constants/routes'
 import {
   getAdminEntitiesPage,
   getEntityTimelineDates,
@@ -150,7 +151,7 @@ export default function AdminEntityManagerPage() {
         </div>
         <div className="flex gap-2">
           <Button asChild size="sm" type="button" variant="outline">
-            <Link to="/admin/entities/new">
+            <Link to={ROUTES.ADMIN_ENTITY_NEW}>
               <Plus aria-hidden="true" className="h-3.5 w-3.5" />
               Create entity
             </Link>

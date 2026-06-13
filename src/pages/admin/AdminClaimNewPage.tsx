@@ -30,6 +30,7 @@ export default function AdminClaimNewPage() {
   const [interpretationFrame, setInterpretationFrame] = useState<InterpretationFrame | null>(null)
   const [isCanonical, setIsCanonical] = useState(false)
   const [status, setStatus] = useState<Extract<ContentStatus, 'draft' | 'published'>>('draft')
+  const [canonicalConflictNotice, setCanonicalConflictNotice] = useState<string | null>(null)
 
   const entityResultsQuery = useQuery({
     enabled: entitySearch.trim().length > 1,
@@ -49,6 +50,12 @@ export default function AdminClaimNewPage() {
     onSuccess: async (claim) => {
       await queryClient.invalidateQueries({ queryKey: ['admin', 'claims'] })
       await queryClient.invalidateQueries({ queryKey: ['entity'] })
+      if ('canonicalConflict' in claim && claim.canonicalConflict) {
+        setCanonicalConflictNotice(
+          'Claim created. A canonical claim already exists for this entity; set this as canonical later from the claim manager if you want to replace it.'
+        )
+        return
+      }
       navigate(`/claim/${claim.id}`)
     },
   })
@@ -64,6 +71,7 @@ export default function AdminClaimNewPage() {
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    setCanonicalConflictNotice(null)
     createMutation.mutate()
   }
 
@@ -132,19 +140,27 @@ export default function AdminClaimNewPage() {
             </div>
             {entitySearch.trim().length > 1 ? (
               <div className="mt-2 max-h-52 overflow-y-auto rounded border border-0.5 border-black/[0.09]">
-                {(entityResultsQuery.data ?? []).map((entity) => (
-                  <button
-                    key={entity.id}
-                    className="block w-full border-b border-b-0.5 border-b-black/[0.06] px-3 py-2 text-left last:border-b-0 hover:bg-black/[0.03]"
-                    type="button"
-                    onClick={() => addEntity(entity)}
-                  >
-                    <p className="font-body text-sm text-ink">{entity.name}</p>
-                    <p className="font-body text-[11px] text-[#777]">
-                      {ENTITY_LABELS[entity.type]}
-                    </p>
-                  </button>
-                ))}
+                {entityResultsQuery.isLoading ? (
+                  <p className="px-3 py-2 font-body text-sm text-[#777]">Searching...</p>
+                ) : (entityResultsQuery.data ?? []).length === 0 ? (
+                  <p className="px-3 py-2 font-body text-sm text-[#777]">
+                    No matching entities.
+                  </p>
+                ) : (
+                  (entityResultsQuery.data ?? []).map((entity) => (
+                    <button
+                      key={entity.id}
+                      className="block w-full border-b border-b-0.5 border-b-black/[0.06] px-3 py-2 text-left last:border-b-0 hover:bg-black/[0.03]"
+                      type="button"
+                      onClick={() => addEntity(entity)}
+                    >
+                      <p className="font-body text-sm text-ink">{entity.name}</p>
+                      <p className="font-body text-[11px] text-[#777]">
+                        {ENTITY_LABELS[entity.type]}
+                      </p>
+                    </button>
+                  ))
+                )}
               </div>
             ) : null}
           </div>
@@ -199,6 +215,12 @@ export default function AdminClaimNewPage() {
         {createMutation.error ? (
           <p className="mt-4 font-body text-sm text-terracotta-dark">
             {getErrorMessage(createMutation.error)}
+          </p>
+        ) : null}
+
+        {canonicalConflictNotice ? (
+          <p className="mt-4 rounded border border-0.5 border-amber-300/70 bg-amber-50 p-3 font-body text-sm text-amber-800">
+            {canonicalConflictNotice}
           </p>
         ) : null}
 
