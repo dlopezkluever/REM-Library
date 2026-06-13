@@ -58,6 +58,7 @@ const wordCount = (text: string) => text.match(/\S+/g)?.length ?? 0
 
 const normalizeUrl = (url: URL) => {
   url.hash = ''
+  url.search = ''
 
   if (url.pathname.length > 1) {
     url.pathname = url.pathname.replace(/\/+$/, '')
@@ -287,6 +288,13 @@ Deno.serve(async (request) => {
       return jsonResponse({ error: 'Source URL is invalid.' }, 400)
     }
 
+    // Mark the source as updateable now that we have a valid URL. Quality
+    // checks below (assertArticlePath, paywall, word count) throw on failure,
+    // which lands in the catch block and calls failSourceStage. The duplicate
+    // and allowlist checks use early returns (400) and intentionally do NOT
+    // mark the source failed — they are retryable by the admin.
+    canUpdateSource = true
+
     const hostname = url.hostname.toLowerCase()
     assertArticlePath(url)
 
@@ -301,8 +309,6 @@ Deno.serve(async (request) => {
     if (!allowedDomain) {
       return jsonResponse({ error: `Domain is not allowlisted: ${hostname}.` }, 400)
     }
-
-    canUpdateSource = true
 
     const abortController = new AbortController()
     const timeoutId = setTimeout(() => abortController.abort(), fetchTimeoutMs)

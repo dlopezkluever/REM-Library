@@ -8,6 +8,7 @@ import {
 } from '../_shared/pipeline.ts'
 
 interface CrawlCandidate {
+  id: string
   title: string
   url: string
   word_count: number
@@ -46,6 +47,7 @@ const getRootUrl = (body: unknown) => {
 const normalizeUrl = (input: string | URL) => {
   const url = input instanceof URL ? new URL(input) : new URL(input)
   url.hash = ''
+  url.search = ''
 
   if (url.pathname.length > 1) {
     url.pathname = url.pathname.replace(/\/+$/, '')
@@ -281,10 +283,9 @@ Deno.serve(async (request) => {
       urls = await discoverFromRootLinks(root, rootHostname)
     }
 
-    const uniqueUrls = Array.from(new Set(urls.map((url) => normalizeUrl(url)))).slice(
-      0,
-      maxCandidates
-    )
+    const deduped = Array.from(new Set(urls.map((url) => normalizeUrl(url))))
+    const totalDiscovered = deduped.length
+    const uniqueUrls = deduped.slice(0, maxCandidates)
     const created: CrawlCandidate[] = []
     const skipped: Array<{ reason: string; url: string }> = []
 
@@ -301,11 +302,11 @@ Deno.serve(async (request) => {
         continue
       }
 
-      await sleep(robots.delayMs)
-      const html = await fetchText(url)
-      const text = stripHtmlToText(html)
-      const title = titleFromHtml(html, url)
-      const count = wordCount(text)
+      // Derive title from URL slug without fetching the full page; the
+      // per-URL fetch was too slow (50+ seconds) and word count is not needed
+      // to make a process/skip decision. Word count will be computed when the
+      // admin clicks Process.
+      const title = titleFromHtml('', url)
 
       const { data: source, error } = await supabase
         .from('sources')
@@ -326,10 +327,15 @@ Deno.serve(async (request) => {
         continue
       }
 
-      created.push({ id: source.id, title, url, word_count: count })
+      created.push({ id: source.id, title, url, word_count: 0 })
     }
 
-    return jsonResponse({ created, skipped })
+    return jsonResponse({
+      created,
+      skipped,
+      total_discovered: totalDiscovered,
+      truncated: totalDiscovered > maxCandidates,
+    })
   } catch (error) {
     return jsonResponse({ error: errorMessage(error) }, 500)
   }
