@@ -108,7 +108,14 @@ export const GraphSidePanel = () => {
         {entity ? (
           <div className="flex h-full flex-col gap-5">
             <SheetHeader>
-              <div className="mb-2">
+              <div className="mb-2 flex items-center gap-3">
+                {entity.image_url ? (
+                  <img
+                    alt=""
+                    className="h-12 w-12 rounded border-0.5 border-black/10 object-cover"
+                    src={entity.image_url}
+                  />
+                ) : null}
                 <EntityBadge type={entity.type} />
               </div>
               <SheetTitle className="pr-8 font-display text-[24px] uppercase leading-tight tracking-normal">
