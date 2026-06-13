@@ -14,6 +14,21 @@ import {
 } from '@/lib/api/sources'
 import { formatDate } from '@/lib/format'
 
+const isOpenLicense = (license: string | null) => {
+  if (!license) {
+    return true
+  }
+
+  const normalized = license.toLowerCase()
+
+  return (
+    normalized.includes('cc ') ||
+    normalized.includes('creative commons') ||
+    normalized.includes('public domain') ||
+    normalized.includes('open')
+  )
+}
+
 export default function SourceDetailPage() {
   const { id } = useParams()
   const mediaRef = useRef<HTMLMediaElement | null>(null)
@@ -120,12 +135,25 @@ export default function SourceDetailPage() {
             <span className="rounded border-0.5 border-black/15 bg-white px-2 py-0.5 font-display text-[8px] uppercase tracking-badge text-[#666]">
               {source.pipeline_stage}
             </span>
+            {source.license ? (
+              <span className="rounded border-0.5 border-amber-300 bg-amber-50 px-2 py-0.5 font-display text-[8px] uppercase tracking-badge text-amber-800">
+                {source.license}
+              </span>
+            ) : null}
           </div>
           <h1 className="font-display text-[28px] leading-tight text-ink">{source.title}</h1>
           <p className="mt-3 font-body text-[12px] italic text-[#666]">
             {source.authors.join(', ') || 'Unknown author'} &middot;{' '}
             {formatDate(source.publication_date)}
           </p>
+          {source.attribution ? (
+            <p className="mt-3 font-body text-[12px] text-[#666]">{source.attribution}</p>
+          ) : null}
+          {source.crawl_date ? (
+            <p className="mt-2 font-body text-[11px] text-[#888]">
+              Crawled {new Date(source.crawl_date).toLocaleString()}
+            </p>
+          ) : null}
           {source.description ? (
             <p className="mt-4 max-w-2xl font-body text-[13px] leading-reading text-[#666]">
               {source.description}
@@ -185,6 +213,7 @@ export default function SourceDetailPage() {
             <TranscriptViewer
               chunks={chunksQuery.data ?? []}
               entities={extractedContent.entities}
+              showFairUseWarning={!isOpenLicense(source.license) && !source.fair_use_rationale}
               onSeek={seekTo}
             />
           ) : null}
