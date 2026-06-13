@@ -7,6 +7,8 @@ import { Input } from '@/components/ui/input'
 import { ENTITY_LABELS } from '@/constants/entityTypes'
 import { ROUTES } from '@/constants/routes'
 import { createAdminEntity, type ContentStatus, type EntityType } from '@/lib/api/admin'
+import { TIMELINE_ERAS } from '@/lib/timeline/eras'
+import { parseTimelineSortYear } from '@/lib/timeline/pinchZoom'
 
 const entityTypes: EntityType[] = ['symbol', 'figure', 'narrative', 'culture', 'trope']
 
@@ -27,7 +29,7 @@ export default function AdminEntityNewPage() {
     mutationFn: () =>
       createAdminEntity({
         dateEra: dateEra.trim() || null,
-        dateSortYear: dateSortYear.trim() ? Number(dateSortYear) : null,
+        dateSortYear: parseTimelineSortYear(dateSortYear),
         description: description.trim() || null,
         name,
         status,
@@ -36,7 +38,7 @@ export default function AdminEntityNewPage() {
     onSuccess: async (entity) => {
       await queryClient.invalidateQueries({ queryKey: ['admin', 'entities'] })
       await queryClient.invalidateQueries({ queryKey: ['entities'] })
-      navigate(`/entity/${entity.slug}`)
+      navigate(`${ROUTES.ADMIN_ENTITIES}?search=${encodeURIComponent(entity.name)}`)
     },
   })
 
@@ -94,11 +96,21 @@ export default function AdminEntityNewPage() {
           <div className="grid gap-4 md:grid-cols-2">
             <label className="block">
               <span className="mb-2 block font-body text-xs text-[#777]">Era</span>
-              <Input value={dateEra} onChange={(event) => setDateEra(event.target.value)} />
+              <Input
+                list="entity-new-era-options"
+                value={dateEra}
+                onChange={(event) => setDateEra(event.target.value)}
+              />
+              <datalist id="entity-new-era-options">
+                {TIMELINE_ERAS.map((era) => (
+                  <option key={era.key} value={era.label} />
+                ))}
+              </datalist>
             </label>
             <label className="block">
               <span className="mb-2 block font-body text-xs text-[#777]">Sort year</span>
               <Input
+                step="1"
                 type="number"
                 value={dateSortYear}
                 onChange={(event) => setDateSortYear(event.target.value)}

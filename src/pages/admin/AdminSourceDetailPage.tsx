@@ -269,9 +269,11 @@ export default function AdminSourceDetailPage() {
       return
     }
 
+    /* eslint-disable react-hooks/set-state-in-effect -- Sync editable rights draft fields when a source record loads. */
     setLicense(source.license ?? '')
     setRightsNotes(source.rights_notes ?? '')
     setAttribution(source.attribution ?? '')
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [source])
 
   const currentStage = source
@@ -592,7 +594,9 @@ export default function AdminSourceDetailPage() {
                   />
                   {rerunAction?.label ?? 'Re-run'}
                 </Button>
-                {source.format === 'url' && source.pipeline_stage === 'uploaded' ? (
+                {source.format === 'url' &&
+                (source.pipeline_stage === 'uploaded' ||
+                  source.pipeline_stage === 'chunking_failed') ? (
                   <Button
                     className="w-full"
                     disabled={urlFetchMutation.isPending}
