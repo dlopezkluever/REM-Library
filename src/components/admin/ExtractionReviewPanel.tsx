@@ -26,6 +26,8 @@ import {
   rejectFailedExtraction,
   reviewExtractionItem,
   searchAdminEntities,
+  interpretationFrameLabels,
+  interpretationFrames,
   type ReviewClaimItem,
   type ReviewEntityItem,
   type ReviewItem,
@@ -33,8 +35,14 @@ import {
   type SaveClaimReviewInput,
   type SaveEntityReviewInput,
 } from '@/lib/api/admin'
+import { useAuth } from '@/hooks/useAuth'
 import { cn } from '@/lib/utils'
-import { enrichSplitError, findHighlightSpan, validateClaimInput, validateEntityInput } from '@/lib/reviewUtils'
+import {
+  enrichSplitError,
+  findHighlightSpan,
+  validateClaimInput,
+  validateEntityInput,
+} from '@/lib/reviewUtils'
 
 interface ExtractionReviewPanelProps {
   group: ReviewSourceGroup
@@ -208,9 +216,11 @@ const EntityFields = ({
 }
 
 const ClaimFields = ({
+  canSetCanonical,
   value,
   onChange,
 }: {
+  canSetCanonical: boolean
   onChange: (value: SaveClaimReviewInput) => void
   value: SaveClaimReviewInput
 }) => {
@@ -256,6 +266,37 @@ const ClaimFields = ({
         value={value.evidenceSummary}
         onChange={(event) => onChange({ ...value, evidenceSummary: event.target.value })}
       />
+      <select
+        aria-label="Interpretation frame"
+        className="h-10 w-full rounded border border-0.5 border-black/15 bg-stone px-3 font-body text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-verdigris"
+        value={value.interpretationFrame ?? ''}
+        onChange={(event) =>
+          onChange({
+            ...value,
+            interpretationFrame: event.target.value
+              ? (event.target.value as SaveClaimReviewInput['interpretationFrame'])
+              : null,
+          })
+        }
+      >
+        <option value="">No frame</option>
+        {interpretationFrames.map((frame) => (
+          <option key={frame} value={frame}>
+            {interpretationFrameLabels[frame]}
+          </option>
+        ))}
+      </select>
+      {canSetCanonical ? (
+        <label className="flex items-center gap-2 rounded border border-0.5 border-black/[0.09] bg-stone/40 px-3 py-2 font-body text-sm text-ink">
+          <input
+            checked={value.isCanonical}
+            className="h-4 w-4 accent-verdigris"
+            type="checkbox"
+            onChange={(event) => onChange({ ...value, isCanonical: event.target.checked })}
+          />
+          Canonical claim
+        </label>
+      ) : null}
     </div>
   )
 }
@@ -270,11 +311,14 @@ const toEntityInput = (item: ReviewEntityItem): SaveEntityReviewInput => ({
 const toClaimInput = (item: ReviewClaimItem): SaveClaimReviewInput => ({
   entitiesInvolved: item.entitiesInvolved,
   evidenceSummary: item.evidenceSummary,
+  interpretationFrame: item.interpretationFrame,
+  isCanonical: item.isCanonical,
   relationshipType: item.relationshipType,
   statement: item.statement,
 })
 
 export const ExtractionReviewPanel = ({ group, onReviewed }: ExtractionReviewPanelProps) => {
+  const { role } = useAuth()
   const [selection, setSelection] = useState(getFirstPendingSelection(group))
   const [mode, setMode] = useState<Mode>('view')
   const [entityEdit, setEntityEdit] = useState<SaveEntityReviewInput | null>(null)
@@ -675,7 +719,11 @@ export const ExtractionReviewPanel = ({ group, onReviewed }: ExtractionReviewPan
           ) : null}
 
           {mode === 'edit' && selectedItem.kind === 'claim' && claimEdit ? (
-            <ClaimFields value={claimEdit} onChange={setClaimEdit} />
+            <ClaimFields
+              canSetCanonical={role === 'super_admin'}
+              value={claimEdit}
+              onChange={setClaimEdit}
+            />
           ) : null}
 
           {mode === 'merge' && selectedItem.kind === 'entity' ? (
