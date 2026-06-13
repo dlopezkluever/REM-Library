@@ -28,6 +28,7 @@ const createSource = (
   created_at: createdAt,
   description: null,
   duration_seconds: null,
+  fair_use_rationale: null,
   file_path: null,
   format: 'audio',
   id,

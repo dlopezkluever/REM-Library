@@ -37,11 +37,11 @@ export const RequireAdmin = () => {
     return <Navigate to="/admin/login" replace state={{ from: location }} />
   }
 
-  if (!role) {
+  if (!role || role === 'contributor') {
     return (
       <div className="flex min-h-screen items-center justify-center bg-stone text-ink">
         <p className="font-body text-sm text-[#888]">
-          {error ?? 'No admin profile is linked to this account.'}
+          {error ?? 'This account does not have internal admin access.'}
         </p>
       </div>
     )
