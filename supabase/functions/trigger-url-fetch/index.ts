@@ -34,8 +34,53 @@ const userAgent = 'AlexandriaBot/1.0'
 const minimumWordCount = 200
 const maxDownloadBytes = 1_500_000
 const targetWordsPerChunk = 500
+const fetchTimeoutMs = 10_000
+const nonArticlePathPatterns = [
+  /\/tag(\/|$)/i,
+  /\/author(\/|$)/i,
+  /\/page(\/|$)/i,
+  /\/category(\/|$)/i,
+  /\/search(\/|$)/i,
+  /\/login(\/|$)/i,
+  /\/signup(\/|$)/i,
+]
+const paywallSignals = [
+  'subscribe to continue',
+  'subscription required',
+  'already a subscriber',
+  'sign in to continue',
+  'to keep reading',
+  'paywall',
+  'premium article',
+]
 
 const wordCount = (text: string) => text.match(/\S+/g)?.length ?? 0
+
+const normalizeUrl = (url: URL) => {
+  url.hash = ''
+
+  if (url.pathname.length > 1) {
+    url.pathname = url.pathname.replace(/\/+$/, '')
+  }
+
+  url.hostname = url.hostname.toLowerCase()
+
+  return url.toString()
+}
+
+const assertArticlePath = (url: URL) => {
+  if (nonArticlePathPatterns.some((pattern) => pattern.test(url.pathname))) {
+    throw new Error('This URL looks like a listing, account, or search page rather than an article.')
+  }
+}
+
+const assertNoPaywallSignals = (html: string, text: string) => {
+  const combined = `${html.slice(0, 100_000)}\n${text.slice(0, 100_000)}`.toLowerCase()
+
+  if (paywallSignals.some((signal) => combined.includes(signal))) {
+    throw new Error('This URL appears to be paywalled or gated.')
+  }
+}
 
 const decodeEntities = (text: string) => {
   return text
@@ -139,6 +184,24 @@ const getAllowedDomain = async (
   return data
 }
 
+const findDuplicateSource = async (
+  supabase: ReturnType<typeof createServiceClient>,
+  normalizedUrl: string,
+  sourceId: string
+) => {
+  const { data, error } = await supabase.rpc('find_source_by_normalized_url', {
+    input_url: normalizedUrl,
+  })
+
+  if (error) {
+    throw error
+  }
+
+  return Array.isArray(data)
+    ? data.find((row) => typeof row.id === 'string' && row.id !== sourceId)
+    : null
+}
+
 const readResponseTextWithLimit = async (response: Response) => {
   const reader = response.body?.getReader()
 
@@ -225,6 +288,14 @@ Deno.serve(async (request) => {
     }
 
     const hostname = url.hostname.toLowerCase()
+    assertArticlePath(url)
+
+    const duplicateSource = await findDuplicateSource(supabase, normalizeUrl(new URL(url)), source.id)
+
+    if (duplicateSource) {
+      return jsonResponse({ error: 'Another source already exists for this URL.' }, 400)
+    }
+
     const allowedDomain = await getAllowedDomain(supabase, hostname)
 
     if (!allowedDomain) {
@@ -233,11 +304,14 @@ Deno.serve(async (request) => {
 
     canUpdateSource = true
 
+    const abortController = new AbortController()
+    const timeoutId = setTimeout(() => abortController.abort(), fetchTimeoutMs)
     const response = await fetch(url, {
       headers: {
         'User-Agent': userAgent,
       },
-    })
+      signal: abortController.signal,
+    }).finally(() => clearTimeout(timeoutId))
 
     if (!response.ok) {
       throw new Error(`URL returned HTTP ${response.status}.`)
@@ -256,6 +330,7 @@ Deno.serve(async (request) => {
 
     const html = await readResponseTextWithLimit(response)
     const text = stripHtmlToText(html)
+    assertNoPaywallSignals(html, text)
 
     if (wordCount(text) < minimumWordCount) {
       throw new Error(

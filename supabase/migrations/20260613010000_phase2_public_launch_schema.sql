@@ -220,6 +220,8 @@ begin
 end;
 $$;
 
+drop function if exists public.get_admin_claims_page(integer, integer, text, public.content_status);
+
 create or replace function public.get_admin_claims_page(
   page_limit integer default 50,
   page_offset integer default 0,
