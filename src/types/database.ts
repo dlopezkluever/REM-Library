@@ -123,6 +123,8 @@ export type Database = {
           created_at: string
           detailed_argument: string | null
           id: string
+          interpretation_frame: Database['public']['Enums']['interpretation_frame'] | null
+          is_canonical: boolean
           statement: string
           status: Database['public']['Enums']['content_status']
           updated_at: string
@@ -134,6 +136,8 @@ export type Database = {
           created_at?: string
           detailed_argument?: string | null
           id?: string
+          interpretation_frame?: Database['public']['Enums']['interpretation_frame'] | null
+          is_canonical?: boolean
           statement: string
           status?: Database['public']['Enums']['content_status']
           updated_at?: string
@@ -145,6 +149,8 @@ export type Database = {
           created_at?: string
           detailed_argument?: string | null
           id?: string
+          interpretation_frame?: Database['public']['Enums']['interpretation_frame'] | null
+          is_canonical?: boolean
           statement?: string
           status?: Database['public']['Enums']['content_status']
           updated_at?: string
@@ -587,17 +593,22 @@ export type Database = {
       sources: {
         Row: {
           authors: string[]
+          attribution: string | null
+          category: Database['public']['Enums']['source_category'] | null
+          crawl_date: string | null
           created_at: string
           description: string | null
           duration_seconds: number | null
           file_path: string | null
           format: Database['public']['Enums']['source_format']
           id: string
+          license: string | null
           page_count: number | null
           pipeline_error: string | null
           pipeline_stage: Database['public']['Enums']['pipeline_stage']
           pipeline_stage_entered_at: string
           publication_date: string | null
+          rights_notes: string | null
           status: Database['public']['Enums']['content_status']
           tier: Database['public']['Enums']['source_tier']
           title: string
@@ -607,17 +618,22 @@ export type Database = {
         }
         Insert: {
           authors?: string[]
+          attribution?: string | null
+          category?: Database['public']['Enums']['source_category'] | null
+          crawl_date?: string | null
           created_at?: string
           description?: string | null
           duration_seconds?: number | null
           file_path?: string | null
           format: Database['public']['Enums']['source_format']
           id?: string
+          license?: string | null
           page_count?: number | null
           pipeline_error?: string | null
           pipeline_stage?: Database['public']['Enums']['pipeline_stage']
           pipeline_stage_entered_at?: string
           publication_date?: string | null
+          rights_notes?: string | null
           status?: Database['public']['Enums']['content_status']
           tier: Database['public']['Enums']['source_tier']
           title: string
@@ -627,17 +643,22 @@ export type Database = {
         }
         Update: {
           authors?: string[]
+          attribution?: string | null
+          category?: Database['public']['Enums']['source_category'] | null
+          crawl_date?: string | null
           created_at?: string
           description?: string | null
           duration_seconds?: number | null
           file_path?: string | null
           format?: Database['public']['Enums']['source_format']
           id?: string
+          license?: string | null
           page_count?: number | null
           pipeline_error?: string | null
           pipeline_stage?: Database['public']['Enums']['pipeline_stage']
           pipeline_stage_entered_at?: string
           publication_date?: string | null
+          rights_notes?: string | null
           status?: Database['public']['Enums']['content_status']
           tier?: Database['public']['Enums']['source_tier']
           title?: string
@@ -646,6 +667,41 @@ export type Database = {
           url?: string | null
         }
         Relationships: []
+      }
+      url_ingestion_config: {
+        Row: {
+          added_by: string | null
+          created_at: string
+          domain: string
+          enabled: boolean
+          id: string
+          notes: string | null
+        }
+        Insert: {
+          added_by?: string | null
+          created_at?: string
+          domain: string
+          enabled?: boolean
+          id?: string
+          notes?: string | null
+        }
+        Update: {
+          added_by?: string | null
+          created_at?: string
+          domain?: string
+          enabled?: boolean
+          id?: string
+          notes?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'url_ingestion_config_added_by_fkey'
+            columns: ['added_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+        ]
       }
     }
     Views: {
@@ -668,6 +724,8 @@ export type Database = {
           entity_names: string[]
           evidence_count: number
           id: string
+          interpretation_frame: Database['public']['Enums']['interpretation_frame'] | null
+          is_canonical: boolean
           statement: string
           status: Database['public']['Enums']['content_status']
           total_count: number
@@ -793,6 +851,14 @@ export type Database = {
         }[]
       }
       search_global: { Args: { search_query: string }; Returns: Json }
+      set_claim_canonical: {
+        Args: {
+          claim_id: string
+          force_replace?: boolean
+          next_is_canonical: boolean
+        }
+        Returns: Json
+      }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { '': string }; Returns: string[] }
       update_claim_status: {
@@ -815,6 +881,13 @@ export type Database = {
       content_status: 'draft' | 'published' | 'archived' | 'disputed'
       entity_type: 'symbol' | 'figure' | 'narrative' | 'culture' | 'trope'
       extraction_status: 'pending' | 'confirmed' | 'edited' | 'rejected' | 'merged'
+      interpretation_frame:
+        | 'canonical_rem'
+        | 'supporting_context'
+        | 'external_academic'
+        | 'historical_record'
+        | 'literary_artistic'
+        | 'disputed_alternative'
       pipeline_stage:
         | 'uploaded'
         | 'transcribing'
@@ -834,6 +907,13 @@ export type Database = {
         | 'instantiates'
         | 'supports'
       source_format: 'audio' | 'video' | 'text' | 'book' | 'url'
+      source_category:
+        | 'primary_rem'
+        | 'secondary_rem'
+        | 'external_academic'
+        | 'historical_record'
+        | 'literary_artistic'
+        | 'community_submitted'
       source_tier: 'primary' | 'secondary'
     }
     CompositeTypes: {
@@ -964,6 +1044,14 @@ export const Constants = {
       content_status: ['draft', 'published', 'archived', 'disputed'],
       entity_type: ['symbol', 'figure', 'narrative', 'culture', 'trope'],
       extraction_status: ['pending', 'confirmed', 'edited', 'rejected', 'merged'],
+      interpretation_frame: [
+        'canonical_rem',
+        'supporting_context',
+        'external_academic',
+        'historical_record',
+        'literary_artistic',
+        'disputed_alternative',
+      ],
       pipeline_stage: [
         'uploaded',
         'transcribing',
@@ -983,6 +1071,14 @@ export const Constants = {
         'parallels',
         'instantiates',
         'supports',
+      ],
+      source_category: [
+        'primary_rem',
+        'secondary_rem',
+        'external_academic',
+        'historical_record',
+        'literary_artistic',
+        'community_submitted',
       ],
       source_format: ['audio', 'video', 'text', 'book', 'url'],
       source_tier: ['primary', 'secondary'],
