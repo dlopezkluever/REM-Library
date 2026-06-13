@@ -773,6 +773,14 @@ export const getPipelineRerunAction = (
 
   if (stage === 'chunking' || stage === 'chunking_failed') {
     if (source?.format === 'url') {
+      if (stage === 'chunking_failed') {
+        return {
+          disabledReason: 'Use the Fetch URL button to re-fetch this URL source.',
+          functionName: null,
+          label: 'Run extraction',
+        }
+      }
+
       return {
         disabledReason: null,
         functionName: 'trigger-extraction',
