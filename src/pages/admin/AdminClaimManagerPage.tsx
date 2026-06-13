@@ -14,6 +14,14 @@ import {
 import { ConfidenceOverrideInput } from '@/components/admin/ConfidenceOverrideInput'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import {
   Table,
@@ -23,6 +31,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { ROUTES } from '@/constants/routes'
 import {
   getAdminClaimsPage,
   interpretationFrameLabels,
@@ -67,6 +76,8 @@ export default function AdminClaimManagerPage() {
   const [search, setSearch] = useState(searchParams.get('search') ?? '')
   const [statusFilter, setStatusFilter] = useState<ContentStatus | 'all'>('all')
   const [selectedClaimIds, setSelectedClaimIds] = useState<string[]>([])
+  const [canonicalConflictTarget, setCanonicalConflictTarget] =
+    useState<AdminClaimListRow | null>(null)
 
   const claimsQuery = useQuery({
     queryKey: [...adminClaimsQueryKey, page, search, statusFilter],
@@ -136,23 +147,15 @@ export default function AdminClaimManagerPage() {
       forceReplace?: boolean
       value: boolean
     }) => {
-      const result = await setClaimCanonical(claim.id, value, forceReplace)
-
-      if (result.conflict) {
-        const shouldReplace = window.confirm(
-          "Another canonical claim already exists for one of this claim's entities. Replace it?"
-        )
-
-        if (!shouldReplace) {
-          return result
-        }
-
-        return setClaimCanonical(claim.id, value, true)
+      return setClaimCanonical(claim.id, value, forceReplace)
+    },
+    onSuccess: async (result, variables) => {
+      if (result.conflict && variables.value && !variables.forceReplace) {
+        setCanonicalConflictTarget(variables.claim)
+        return
       }
 
-      return result
-    },
-    onSuccess: async () => {
+      setCanonicalConflictTarget(null)
       await queryClient.invalidateQueries({ queryKey: adminClaimsQueryKey })
       await queryClient.invalidateQueries({ queryKey: ['entity'] })
     },
@@ -190,7 +193,7 @@ export default function AdminClaimManagerPage() {
         </div>
         <div className="flex gap-2">
           <Button asChild size="sm" type="button" variant="outline">
-            <Link to="/admin/claims/new">
+            <Link to={ROUTES.ADMIN_CLAIM_NEW}>
               <Plus aria-hidden="true" className="h-3.5 w-3.5" />
               Create claim
             </Link>
@@ -501,6 +504,47 @@ export default function AdminClaimManagerPage() {
           </Button>
         </div>
       </div>
+
+      <Dialog
+        open={canonicalConflictTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setCanonicalConflictTarget(null)
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Replace Canonical Claim?</DialogTitle>
+            <DialogDescription>
+              Another canonical claim already exists for one of this claim&apos;s entities. Replace
+              it?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-5 flex justify-end gap-3">
+            <DialogClose asChild>
+              <Button type="button" variant="outline">
+                Cancel
+              </Button>
+            </DialogClose>
+            <Button
+              disabled={canonicalMutation.isPending}
+              type="button"
+              onClick={() => {
+                if (canonicalConflictTarget) {
+                  canonicalMutation.mutate({
+                    claim: canonicalConflictTarget,
+                    forceReplace: true,
+                    value: true,
+                  })
+                }
+              }}
+            >
+              Replace
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -84,7 +84,7 @@ export interface CreateAdminClaimInput {
   status: Extract<ContentStatus, 'draft' | 'published'>
 }
 
-export interface UrlIngestionDomainRow extends Tables<'url_ingestion_config'> {}
+export type UrlIngestionDomainRow = Tables<'url_ingestion_config'>
 
 export interface AdminSourceListRow {
   extractionCount: number
@@ -164,6 +164,10 @@ export interface SplitEntityInput {
 export type ReviewActionInput =
   | {
       action: 'confirm'
+      confirmClaimMeta?: {
+        interpretationFrame: InterpretationFrame | null
+        isCanonical: boolean
+      }
       extractionId: string
       itemId: string
       itemKind: 'entity' | 'claim'
@@ -209,6 +213,7 @@ export interface PipelineRerunAction {
 }
 
 export interface ReviewActionResult {
+  canonicalConflict?: boolean
   createdIds: string[]
   rowStatus: ExtractionStatus
 }
@@ -1166,12 +1171,36 @@ export const listUrlIngestionDomains = async (): Promise<UrlIngestionDomainRow[]
   return data
 }
 
-export const createUrlIngestionDomain = async (domain: string) => {
-  const normalizedDomain = domain.trim().toLowerCase()
+export const normalizeUrlIngestionDomain = (domain: string) => {
+  const trimmedDomain = domain.trim().toLowerCase()
 
-  if (!normalizedDomain) {
+  if (!trimmedDomain) {
     throw new Error('Domain is required.')
   }
+
+  let url: URL
+
+  try {
+    url = new URL(
+      trimmedDomain.startsWith('http://') || trimmedDomain.startsWith('https://')
+        ? trimmedDomain
+        : `https://${trimmedDomain}`
+    )
+  } catch {
+    throw new Error('Enter a valid domain, such as example.com.')
+  }
+
+  const hostname = url.hostname.replace(/\.$/, '')
+
+  if (!hostname || !hostname.includes('.')) {
+    throw new Error('Enter a valid domain, such as example.com.')
+  }
+
+  return hostname
+}
+
+export const createUrlIngestionDomain = async (domain: string) => {
+  const normalizedDomain = normalizeUrlIngestionDomain(domain)
 
   const { data, error } = await supabase
     .from('url_ingestion_config')
@@ -1223,6 +1252,7 @@ export const getAdminSourceListRows = async (): Promise<AdminSourceListRow[]> =>
   }
 
   return data.map((row) => {
+    // The list RPC does not yet expose Phase 2 source metadata columns; detail views fetch them.
     const source: AdminSourceRow = {
       authors: row.authors,
       attribution: null,
@@ -1522,6 +1552,16 @@ export const updateClaimInterpretationFrame = async (
   claimId: string,
   frame: InterpretationFrame | null
 ) => {
+  const { data: currentClaim, error: currentClaimError } = await supabase
+    .from('claims')
+    .select('interpretation_frame')
+    .eq('id', claimId)
+    .single()
+
+  if (currentClaimError) {
+    throw currentClaimError
+  }
+
   const { data, error } = await supabase
     .from('claims')
     .update({ interpretation_frame: frame })
@@ -1534,7 +1574,8 @@ export const updateClaimInterpretationFrame = async (
   }
 
   await insertAdminAuditEvent('update_claim_interpretation_frame', 'claims', claimId, {
-    interpretation_frame: frame,
+    new_frame: frame,
+    old_frame: currentClaim.interpretation_frame,
   })
 
   return data
@@ -1580,21 +1621,6 @@ export const createAdminClaim = async (input: CreateAdminClaimInput) => {
     if (role !== 'super_admin') {
       throw new Error('Only super admins can set canonical claims.')
     }
-
-    const { data: existingCanonicalLinks, error: canonicalCheckError } = await supabase
-      .from('claim_entities')
-      .select('claim_id, claims!inner(is_canonical)')
-      .in('entity_id', entityIds)
-      .eq('claims.is_canonical', true)
-      .limit(1)
-
-    if (canonicalCheckError) {
-      throw canonicalCheckError
-    }
-
-    if (existingCanonicalLinks.length > 0) {
-      throw new Error('Another canonical claim already exists for one of the selected entities.')
-    }
   }
 
   const { data: claim, error: claimError } = await supabase
@@ -1627,7 +1653,20 @@ export const createAdminClaim = async (input: CreateAdminClaimInput) => {
     const canonicalResult = await setClaimCanonical(claim.id, true)
 
     if (canonicalResult.conflict) {
-      throw new Error('Another canonical claim already exists for one of the selected entities.')
+      await insertAdminAuditEvent('create_manual_claim', 'claims', claim.id, {
+        canonical_conflict: true,
+        entity_ids: entityIds,
+        interpretation_frame: input.interpretationFrame,
+        is_canonical: false,
+        status: input.status,
+      })
+
+      return {
+        ...claim,
+        canonicalConflict: true,
+        existingCanonicalClaimId: canonicalResult.existingCanonicalClaimId ?? null,
+        is_canonical: false,
+      }
     }
   }
 
@@ -2181,8 +2220,10 @@ export const reviewExtractionItem = async (
     throw new Error('Review action returned an invalid payload.')
   }
 
+  const reviewResult: ReviewActionResult = data
+
   if (input.action === 'edit' && input.itemKind === 'claim' && input.claim) {
-    const createdClaimId = data.createdIds[0]
+    const createdClaimId = reviewResult.createdIds[0]
 
     if (createdClaimId) {
       if (input.claim.interpretationFrame !== null) {
@@ -2193,15 +2234,34 @@ export const reviewExtractionItem = async (
         const result = await setClaimCanonical(createdClaimId, true)
 
         if (result.conflict) {
-          throw new Error(
-            'Claim was created, but another canonical claim already exists for this entity.'
-          )
+          return { ...reviewResult, canonicalConflict: true }
         }
       }
     }
   }
 
-  return data
+  if (input.action === 'confirm' && input.itemKind === 'claim' && input.confirmClaimMeta) {
+    const createdClaimId = reviewResult.createdIds[0]
+
+    if (createdClaimId) {
+      if (input.confirmClaimMeta.interpretationFrame !== null) {
+        await updateClaimInterpretationFrame(
+          createdClaimId,
+          input.confirmClaimMeta.interpretationFrame
+        )
+      }
+
+      if (input.confirmClaimMeta.isCanonical) {
+        const result = await setClaimCanonical(createdClaimId, true)
+
+        if (result.conflict) {
+          return { ...reviewResult, canonicalConflict: true }
+        }
+      }
+    }
+  }
+
+  return reviewResult
 }
 
 export const rejectFailedExtraction = async (extractionId: string): Promise<ReviewActionResult> => {
@@ -2354,7 +2414,7 @@ const sourceCategoriesSet: Array<NonNullable<AdminSourceRow['category']>> = [
 const sourceTiers: Array<AdminSourceRow['tier']> = ['primary', 'secondary']
 
 const isObjectRecord = (value: unknown): value is Record<string, unknown> => {
-  return typeof value === 'object' && value !== null
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 const isStringArray = (value: unknown): value is string[] => {
