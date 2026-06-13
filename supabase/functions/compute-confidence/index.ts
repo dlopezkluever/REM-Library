@@ -165,11 +165,13 @@ const fetchRelationshipsForEntityIds = async (
     supabase
       .from('relationships')
       .select('id,from_entity_id,to_entity_id')
+      .eq('status', 'active')
       .in('from_entity_id', entityIds)
       .returns<RelationshipRow[]>(),
     supabase
       .from('relationships')
       .select('id,from_entity_id,to_entity_id')
+      .eq('status', 'active')
       .in('to_entity_id', entityIds)
       .returns<RelationshipRow[]>(),
   ])

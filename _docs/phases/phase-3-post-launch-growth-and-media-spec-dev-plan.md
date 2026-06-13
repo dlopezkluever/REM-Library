@@ -1,4 +1,5 @@
 # Phase 3 — Post-Launch Growth and Media
+
 ## Spec and Dev Plan
 
 **Phase label:** Can build after launch
@@ -88,16 +89,16 @@ What does not exist:
 
 ## 4. Problems / Gaps Being Solved
 
-| Gap | Impact |
-|---|---|
-| URL-format sources cannot advance through the pipeline | Every web article must be manually cataloged; the system cannot scale without this |
-| Re-crawling a domain creates duplicate source records | No URL uniqueness constraint means any batch operation produces junk data |
-| JavaScript-rendered pages and paywall pages return empty or partial content | Without a quality gate, bad page fetches silently produce low-quality extractions |
-| Audio/video context visible only on the source page | Users reading an entity or claim page cannot hear the primary source material without navigating away |
-| Entities have no visual identity | The graph and entity pages are text-only; no image for orientation or recognition |
-| No copyright or attribution on sources | Full transcript display and excerpt usage grows as the corpus grows; rights gap compounds with scale |
-| Community has no contribution channel | Knowledge gaps that public users could fill require admin intervention; no feedback loop |
-| Suggestions, if built naively, could overwrite canonical content | Must be designed so suggestions never directly touch `claims`, `entities`, or `relationships` |
+| Gap                                                                         | Impact                                                                                                |
+| --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| URL-format sources cannot advance through the pipeline                      | Every web article must be manually cataloged; the system cannot scale without this                    |
+| Re-crawling a domain creates duplicate source records                       | No URL uniqueness constraint means any batch operation produces junk data                             |
+| JavaScript-rendered pages and paywall pages return empty or partial content | Without a quality gate, bad page fetches silently produce low-quality extractions                     |
+| Audio/video context visible only on the source page                         | Users reading an entity or claim page cannot hear the primary source material without navigating away |
+| Entities have no visual identity                                            | The graph and entity pages are text-only; no image for orientation or recognition                     |
+| No copyright or attribution on sources                                      | Full transcript display and excerpt usage grows as the corpus grows; rights gap compounds with scale  |
+| Community has no contribution channel                                       | Knowledge gaps that public users could fill require admin intervention; no feedback loop              |
+| Suggestions, if built naively, could overwrite canonical content            | Must be designed so suggestions never directly touch `claims`, `entities`, or `relationships`         |
 
 ---
 
@@ -171,17 +172,19 @@ After Phase 3 is complete:
 **Component location:** `src/components/source/InlineMediaPlayer.tsx`
 
 **Props:**
+
 ```typescript
 interface InlineMediaPlayerProps {
-  sourceId: string;
-  startSec: number;
-  endSec?: number;
-  format: 'audio' | 'video';
-  label?: string; // e.g., "Source: Interview with X, 12:34"
+  sourceId: string
+  startSec: number
+  endSec?: number
+  format: 'audio' | 'video'
+  label?: string // e.g., "Source: Interview with X, 12:34"
 }
 ```
 
 **Behavior:**
+
 - On mount, calls `getSignedSourceFileUrl(sourceId)` to get a 1-hour signed URL
 - Renders `<audio>` or `<video>` element with `src={signedUrl}#t={startSec}`
 - If `endSec` is present, automatically pauses playback when `currentTime >= endSec`
@@ -208,6 +211,7 @@ interface InlineMediaPlayerProps {
 **Admin upload flow:** On `AdminEntityManagerPage.tsx`, add an image upload section. On file select, upload to the `entity-images` bucket via the Supabase storage client. On success, write the public URL to `entities.image_url` or `entities.hero_image_url` via a new `updateEntityImages()` function in `src/lib/api/admin.ts`.
 
 **Display locations:**
+
 - `EntityDetailPage.tsx` — hero image as a banner, profile image at top-left of the entity header section
 - `GraphSidePanel.tsx` — profile image as a small thumbnail next to the entity name (only if `image_url` is set)
 - `EntityBadge` component — optional small image thumbnail when used in list contexts (lower priority)
@@ -229,6 +233,7 @@ interface InlineMediaPlayerProps {
 **Admin input:** Add fields for `license`, `rights_notes`, and `attribution` to `AdminSourceDetailPage.tsx` (editable inputs, save on blur or explicit save action). `crawl_date` is read-only and system-set.
 
 **Public display:**
+
 - `SourceDetailPage.tsx` — display `attribution` below the source title; show `license` as a badge; show `crawl_date` if present
 - `SourceAnchorRow.tsx` — append `attribution` to the citation text when the source has one
 
@@ -242,12 +247,12 @@ interface InlineMediaPlayerProps {
 
 **Role expansion:**
 
-| Role | Description |
-|---|---|
-| `super_admin` | Full control. Can set `is_canonical`. Can approve suggestions. Can manage all content. |
-| `editor` | Same as current `is_admin()` behavior. Can review extractions, publish content, manage sources. Cannot set `is_canonical`. |
-| `viewer` | Current internal viewer — read access to internal routes. |
-| `contributor` | New public role. Can submit suggestions. Cannot write to graph directly. |
+| Role          | Description                                                                                                                |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `super_admin` | Full control. Can set `is_canonical`. Can approve suggestions. Can manage all content.                                     |
+| `editor`      | Same as current `is_admin()` behavior. Can review extractions, publish content, manage sources. Cannot set `is_canonical`. |
+| `viewer`      | Current internal viewer — read access to internal routes.                                                                  |
+| `contributor` | New public role. Can submit suggestions. Cannot write to graph directly.                                                   |
 
 For Phase 3, `contributor` is the only new role needed. Authenticated users with no explicit role get `contributor` by default on registration.
 
@@ -256,6 +261,7 @@ For Phase 3, `contributor` is the only new role needed. Authenticated users with
 **`suggestions` table:** (full schema in section 7)
 
 Suggestion types:
+
 - `new_claim` — propose a new claim for an entity (requires `target_entity_id` and text)
 - `claim_correction` — propose a correction to an existing claim (requires `target_id` pointing to a claim)
 - `flag_entity` — flag an entity as needing admin attention (requires `target_id` and a reason)
@@ -486,12 +492,14 @@ This function runs with elevated privileges so it can insert into `claims` on be
 **File:** `AdminSourceDetailPage.tsx`
 
 For sources with `format = 'url'` and `pipeline_stage = 'uploaded'`:
+
 - Show a "Process URL" button that calls `triggerUrlFetch(sourceId)`
 - Show a loading state while the edge function runs
 - On success, refresh the page to show the updated pipeline stage
 - On failure, show the `processing_error` message from the source record
 
 Add a rights metadata section (visible for all sources):
+
 - Editable inputs for `license`, `attribution`, `rights_notes`, `fair_use_rationale`
 - Read-only display of `crawl_date` if set
 - Save on blur or an explicit "Save rights info" button
@@ -511,11 +519,13 @@ Add a rights metadata section (visible for all sources):
 **New component:** `src/components/source/InlineMediaPlayer.tsx`
 
 **`ClaimDetailPage.tsx`:**
+
 - In the evidence section, below each `SourceAnchorRow`, check if the anchor has `start_timestamp_sec`
 - If yes, render `<InlineMediaPlayer>` with the source's format, `sourceId`, `startSec`, and `endSec`
 - The player is shown collapsed by default with a "Listen to source" toggle
 
 **`EntityDetailPage.tsx`:**
+
 - On each claim card where the claim's primary anchor has timestamps, show a small media indicator icon
 - Clicking the indicator expands an inline `<InlineMediaPlayer>` within the claim row
 
@@ -524,6 +534,7 @@ Add a rights metadata section (visible for all sources):
 **File:** `AdminEntityManagerPage.tsx`
 
 Add an "Images" section to the entity detail/edit view:
+
 - Profile image: file input + preview; upload to `entity-images` bucket; save URL to `entities.image_url`
 - Hero image: same pattern for `entities.hero_image_url`
 - "Remove image" button for each that clears the column
@@ -531,38 +542,45 @@ Add an "Images" section to the entity detail/edit view:
 ### 9.5 Entity Images — Public Display
 
 **`EntityDetailPage.tsx`:**
+
 - If `hero_image_url` is set, render a full-width hero image above the entity name/description area
 - If `image_url` is set, render it as a circular or rounded profile image in the entity header alongside the name
 - If neither is set, render the existing layout unchanged
 
 **`GraphSidePanel.tsx`:**
+
 - If `image_url` is set on the entity, render it as a small `32px` or `40px` thumbnail next to the entity name in the sheet header (lines 99-102)
 - Fetched as part of the entity data in the neighborhood query; no new API call needed if `image_url` is included in the existing entity SELECT
 
 ### 9.6 Source Rights — Public Display
 
 **`SourceDetailPage.tsx`:**
+
 - Below the source title: show `attribution` text if set
 - Show `license` as a small badge or text label
 - Show `crawl_date` as "Fetched on [date]" if set (distinct from `publication_date`)
 - If license is non-open and `fair_use_rationale` is empty and the source is publicly visible, show a yellow warning banner: "Rights rationale not documented"
 
 **`SourceAnchorRow.tsx`:**
+
 - Append attribution to the citation label when `attribution` is set, e.g., "— [title] (© 2023 Author)"
 
 ### 9.7 Community Suggestion UI
 
 **Registration:**
+
 - New page `src/pages/auth/RegisterPage.tsx` — email, password, display name; email verification required
 - Link from public nav / login page
 
 **Suggestion submission:**
+
 - `EntityDetailPage.tsx`: "Suggest a claim" button in the claims section footer; opens a modal
 - `ClaimDetailPage.tsx`: "Suggest a correction" button in the page header; opens a modal
 - Modal form: textarea for suggestion text, type pre-filled based on context, submit button
 - On submit: calls `submitSuggestion()`; shows a confirmation message; no page navigation
 
 **Admin suggestion review:**
+
 - New page `AdminSuggestionManagerPage.tsx` at `/admin/suggestions`
 - Paginated table: type badge, target entity/claim link, submitter email, date, status, suggestion text excerpt
 - Filters: by status (pending/approved/rejected/clarification), by type
@@ -579,6 +597,7 @@ Add an "Images" section to the entity detail/edit view:
 **Goal:** Prevent duplicate source records before any crawl infrastructure is built.
 
 **Steps:**
+
 1. Write a migration file (e.g., `20260608010000_url_uniqueness.sql`) with the normalized unique index on `sources.url`
 2. Before applying: check existing rows for duplicate normalized URLs; resolve any conflicts manually
 3. Apply the migration to the online Supabase instance
@@ -586,6 +605,7 @@ Add an "Images" section to the entity detail/edit view:
 5. Update `AdminSourceNewPage.tsx` to display the URL duplicate error
 
 **Acceptance criteria:**
+
 - Inserting two sources with the same URL (with/without trailing slash, with different casing) fails at the DB level
 - The admin source creation form shows a user-friendly error when a duplicate URL is detected
 
@@ -596,6 +616,7 @@ Add an "Images" section to the entity detail/edit view:
 **Goal:** Attach license, attribution, and rights notes to sources.
 
 **Steps:**
+
 1. Write a migration adding `crawl_date`, `license`, `rights_notes`, `attribution`, `fair_use_rationale` to `sources`
 2. Add `updateSourceRights()` to `src/lib/api/admin.ts`
 3. Update `getSource()` in `src/lib/api/sources.ts` to include the new fields
@@ -605,6 +626,7 @@ Add an "Images" section to the entity detail/edit view:
 7. Update `SourceAnchorRow.tsx` to append `attribution` to citation text
 
 **Acceptance criteria:**
+
 - Admin can set license, attribution, and rights notes on any source
 - Attribution appears on the public source detail page and in citation links
 - Fair use warning appears when a source lacks rationale and has a non-open license
@@ -616,6 +638,7 @@ Add an "Images" section to the entity detail/edit view:
 **Goal:** Entities can have a profile image and hero image.
 
 **Steps:**
+
 1. Write a migration adding `image_url text` and `hero_image_url text` to `entities`
 2. Create the `entity-images` public storage bucket (via migration or Supabase dashboard)
 3. Add `updateEntityImages()` to `src/lib/api/admin.ts`
@@ -624,6 +647,7 @@ Add an "Images" section to the entity detail/edit view:
 6. Update `GraphSidePanel.tsx` to render a small profile image thumbnail if `image_url` is set (ensure `image_url` is included in the entity data the side panel receives)
 
 **Acceptance criteria:**
+
 - Admin can upload, preview, and remove profile and hero images for any entity
 - `EntityDetailPage.tsx` shows the hero image at the top and profile image in the header when set
 - `GraphSidePanel.tsx` shows a small thumbnail next to the entity name when `image_url` is set
@@ -636,12 +660,14 @@ Add an "Images" section to the entity detail/edit view:
 **Goal:** Establish the domain allowlist and admin management UI before the fetch function is built.
 
 **Steps:**
+
 1. Write migration creating `url_ingestion_config` table with RLS
 2. Add `getUrlIngestionDomains()`, `addUrlIngestionDomain()`, `removeUrlIngestionDomain()` to `src/lib/api/admin.ts`
 3. Add a domain allowlist management section to the admin UI (can be a tab on `AdminSourceNewPage.tsx` or a standalone settings page under `/admin/settings/url-domains`)
 4. Add a table showing allowed domains with add and remove actions
 
 **Acceptance criteria:**
+
 - Admins can add, view, and remove domains from the allowlist
 - Allowlist persists in the database
 
@@ -652,6 +678,7 @@ Add an "Images" section to the entity detail/edit view:
 **Goal:** URL-format sources can advance through the pipeline.
 
 **Steps:**
+
 1. Create `supabase/functions/trigger-url-fetch/index.ts`
 2. Implement: load source, verify domain allowlist, fetch URL (10s timeout), quality check, extract readable content, store chunk, advance `pipeline_stage`, set `crawl_date`; on failure write `pipeline_stage = 'failed'` and `processing_error`
 3. Add `triggerUrlFetch(sourceId)` to `src/lib/api/admin.ts` (calls the edge function via `supabase.functions.invoke`)
@@ -661,11 +688,13 @@ Add an "Images" section to the entity detail/edit view:
 7. Test with multiple URL types: article, tag page (should fail quality check), paywall page (should fail), non-allowlist domain (should reject)
 
 **Subtasks:**
+
 - Page quality check implementation: word count ≥ 200, non-article path patterns, basic paywall signal detection
 - Content extraction: use a server-side Readability equivalent or structured LLM call; confirm approach before building
 - Error handling: all failures write human-readable `processing_error` to source record
 
 **Acceptance criteria:**
+
 - URL-format sources at `pipeline_stage = 'uploaded'` advance to `chunking` after "Process URL" is clicked
 - Tag, author, category, login, and pagination pages fail the quality check and result in `pipeline_stage = 'failed'` with a message
 - Non-allowlisted domains are rejected before any fetch is attempted
@@ -678,6 +707,7 @@ Add an "Images" section to the entity detail/edit view:
 **Goal:** Admins can discover all article URLs from a root domain without manually entering each one.
 
 **Steps:**
+
 1. Create `supabase/functions/trigger-site-crawl/index.ts`
 2. Implement: validate domain allowlist, attempt sitemap fetch, fall back to root page link extraction, create source records for new URLs (skip duplicates), respect robots.txt crawl-delay with 1s minimum
 3. Add `triggerSiteCrawl(rootUrl)` to `src/lib/api/admin.ts`
@@ -687,6 +717,7 @@ Add an "Images" section to the entity detail/edit view:
 7. Include domain allowlist management section on the crawl page
 
 **Acceptance criteria:**
+
 - Entering a domain URL with a valid sitemap creates source records for all article-level URLs in the sitemap
 - Entering a domain with no sitemap falls back to root-page link extraction
 - Duplicate URLs (already in `sources`) are silently skipped
@@ -700,6 +731,7 @@ Add an "Images" section to the entity detail/edit view:
 **Goal:** Audio and video excerpts from source anchors are playable inline on claim and entity pages.
 
 **Steps:**
+
 1. Create `src/components/source/InlineMediaPlayer.tsx` with the props interface described in section 6.3
 2. Implement signed URL fetch on mount, `<audio>`/`<video>` rendering, timestamp seeking, `endSec` auto-pause
 3. Add graceful fallback to text link when signed URL fetch fails
@@ -707,6 +739,7 @@ Add an "Images" section to the entity detail/edit view:
 5. Wire into `EntityDetailPage.tsx`: add a media indicator icon to claim cards where the primary anchor has timestamps; clicking expands the player inline
 
 **Acceptance criteria:**
+
 - Clicking "Listen to source" on a claim page starts playback at the anchor's start timestamp
 - Playback stops at `endSec` if set
 - If the signed URL fetch fails, a text link to the source page with the anchor hash appears instead
@@ -719,6 +752,7 @@ Add an "Images" section to the entity detail/edit view:
 **Goal:** Public users can create accounts with the contributor role.
 
 **Steps:**
+
 1. Write migration adding `contributor` to the `admin_role` enum
 2. Verify `is_admin()` returns false for `contributor`; verify `has_internal_access()` returns false for `contributor`
 3. Update `public.profiles` insert trigger (if exists) or registration flow to default new public registrations to `role = 'contributor'`
@@ -727,6 +761,7 @@ Add an "Images" section to the entity detail/edit view:
 6. Link registration page from the login page and public nav
 
 **Acceptance criteria:**
+
 - New users who register via the public registration page receive `role = 'contributor'`
 - Contributors cannot access any `/admin/` routes
 - Email verification is required before the account is active
@@ -738,6 +773,7 @@ Add an "Images" section to the entity detail/edit view:
 **Goal:** Contributors can submit suggestions; admins can review, approve, or reject them.
 
 **Steps:**
+
 1. Write migration creating `suggestion_type` enum, `suggestion_status` enum, and `suggestions` table with RLS (see section 7.6)
 2. Write `approve_suggestion()` database function (see section 8.3)
 3. Add contributor-facing API functions: `submitSuggestion()` in `src/lib/api/suggestions.ts` (new file)
@@ -750,11 +786,13 @@ Add an "Images" section to the entity detail/edit view:
 10. After approval of `new_claim` / `claim_correction`: show link to the newly created draft claim in the admin claim manager
 
 **Subtasks:**
+
 - Submission modal: type pre-fill from context, textarea, character limit (e.g., 1000 chars), submit with loading state and confirmation message
 - Approval function must be an atomic DB transaction: create draft content and update suggestion status in one operation
 - `flag_entity` and `flag_claim` approval must only call the disputed status update — no new claim is created
 
 **Acceptance criteria:**
+
 - Authenticated contributors can submit suggestions from entity and claim pages
 - Suggestions appear in `/admin/suggestions` with status `pending`
 - Approving a `new_claim` suggestion creates a new `claims` row with `status = 'draft'` and does not publish it
@@ -809,6 +847,7 @@ Phase 3 is complete when all of the following are true:
 **Risk:** The site crawl function fetches content from external sites that may be paywalled, copyrighted, or restricted. Displaying this content could create legal exposure.
 
 **Mitigation:**
+
 - Domain allowlist is mandatory — only pre-approved domains are crawled
 - The fair use rationale field forces admins to document rights before transcripts are publicly visible
 - `TranscriptViewer.tsx` shows a rights warning for sources with non-open licenses and no rationale
@@ -819,6 +858,7 @@ Phase 3 is complete when all of the following are true:
 **Risk:** Crawling a large blog creates hundreds of source records immediately, overwhelming the admin review queue.
 
 **Mitigation:**
+
 - The crawl page UI requires individual per-URL approval before any fetch is triggered — no bulk auto-process
 - Consider adding a crawl result page limit (e.g., show first 50 discovered URLs, paginate for more) to prevent a single crawl from creating hundreds of records at once
 - Admins can skip URLs from the crawl results UI without creating extraction records
@@ -828,6 +868,7 @@ Phase 3 is complete when all of the following are true:
 **Risk:** If suggestions are approved frequently, the admin claim manager fills with draft claims from contributor suggestions mixed with AI-extracted draft claims.
 
 **Mitigation:**
+
 - Add a `source_type` column on `claims` (e.g., `ai_extraction`, `admin_manual`, `contributor_suggestion`) so admins can filter by origin in the claim manager
 - In the admin claim manager, add a "Show source" filter to separate suggestion-derived claims from extraction-derived ones
 
@@ -836,6 +877,7 @@ Phase 3 is complete when all of the following are true:
 **Risk:** Open public registration with suggestion submission may attract spam.
 
 **Mitigation:**
+
 - Email verification is required before suggestions can be submitted
 - Admin review is mandatory for all suggestions — spam never touches the graph
 - Admins can reject suggestions with one click; no moderation burden beyond reviewing
@@ -846,6 +888,7 @@ Phase 3 is complete when all of the following are true:
 **Risk:** The `InlineMediaPlayer` fetches a signed URL on mount. If the user leaves the page open and comes back more than 1 hour later, the URL has expired and the player breaks.
 
 **Mitigation:**
+
 - Add a refresh mechanism: re-fetch the signed URL on the `error` event of the `<audio>`/`<video>` element
 - Alternatively, fetch the signed URL only on user interaction (when the "Listen to source" toggle is clicked) rather than on mount
 
@@ -854,6 +897,7 @@ Phase 3 is complete when all of the following are true:
 **Risk:** Some target domains disallow crawling via `robots.txt`, and the crawler may violate terms of service.
 
 **Mitigation:**
+
 - The `trigger-site-crawl` function must fetch and respect `robots.txt` before crawling any URLs
 - If `robots.txt` disallows the user agent for the path, skip those URLs and log them as skipped in the crawl results
 - The domain allowlist is also an opportunity for admins to confirm that crawling is legally permissible for a domain before adding it

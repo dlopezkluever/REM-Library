@@ -21,6 +21,9 @@ export interface SourceClaimCount {
   claimCount: number
 }
 
+const getEffectiveClaimConfidence = (claim: Tables<'claims'>) =>
+  claim.confidence_override ?? claim.confidence_score
+
 export const getAllSources = async () => {
   const { data, error } = await supabase
     .from('sources')
@@ -207,11 +210,14 @@ export const getSourceExtractedContent = async (
     .select('*')
     .in('id', claimIds)
     .eq('status', 'published')
-    .order('confidence_score', { ascending: false })
 
   if (claimsError) {
     throw claimsError
   }
+
+  const sortedClaims = [...claims].sort(
+    (first, second) => getEffectiveClaimConfidence(second) - getEffectiveClaimConfidence(first)
+  )
 
   const { data: entityLinks, error: entityLinksError } = await supabase
     .from('claim_entities')
@@ -225,7 +231,7 @@ export const getSourceExtractedContent = async (
   const entityIds = Array.from(new Set(entityLinks.map((entityLink) => entityLink.entity_id)))
 
   if (entityIds.length === 0) {
-    return { claims, entities: [] }
+    return { claims: sortedClaims, entities: [] }
   }
 
   const { data: entities, error: entitiesError } = await supabase
@@ -239,7 +245,7 @@ export const getSourceExtractedContent = async (
     throw entitiesError
   }
 
-  return { claims, entities }
+  return { claims: sortedClaims, entities }
 }
 
 export const getClaimCountsForSources = async (sourceIds: string[]): Promise<SourceClaimCount[]> => {

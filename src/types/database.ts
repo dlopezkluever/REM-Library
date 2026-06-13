@@ -478,31 +478,43 @@ export type Database = {
       }
       relationships: {
         Row: {
+          archived_at: string | null
+          archived_by: string | null
           claim_ids: string[]
           created_at: string
           from_entity_id: string
           id: string
+          status: 'active' | 'archived'
           to_entity_id: string
           type: Database['public']['Enums']['relationship_type']
           weight: number
+          weight_override: number | null
         }
         Insert: {
+          archived_at?: string | null
+          archived_by?: string | null
           claim_ids?: string[]
           created_at?: string
           from_entity_id: string
           id?: string
+          status?: 'active' | 'archived'
           to_entity_id: string
           type: Database['public']['Enums']['relationship_type']
           weight?: number
+          weight_override?: number | null
         }
         Update: {
+          archived_at?: string | null
+          archived_by?: string | null
           claim_ids?: string[]
           created_at?: string
           from_entity_id?: string
           id?: string
+          status?: 'active' | 'archived'
           to_entity_id?: string
           type?: Database['public']['Enums']['relationship_type']
           weight?: number
+          weight_override?: number | null
         }
         Relationships: [
           {
@@ -510,6 +522,13 @@ export type Database = {
             columns: ['from_entity_id']
             isOneToOne: false
             referencedRelation: 'entities'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'relationships_archived_by_fkey'
+            columns: ['archived_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
             referencedColumns: ['id']
           },
           {
@@ -721,6 +740,21 @@ export type Database = {
       }
       has_internal_access: { Args: never; Returns: boolean }
       is_admin: { Args: never; Returns: boolean }
+      bulk_update_claim_status: {
+        Args: {
+          claim_ids: string[]
+          next_status: Database['public']['Enums']['content_status']
+        }
+        Returns: string[]
+      }
+      find_source_by_normalized_url: {
+        Args: { input_url: string }
+        Returns: {
+          id: string
+          title: string
+          url: string | null
+        }[]
+      }
       publish_claims: { Args: { claim_ids: string[] }; Returns: string[] }
       publish_sources: { Args: { source_ids: string[] }; Returns: string[] }
       refresh_search_indexes: {

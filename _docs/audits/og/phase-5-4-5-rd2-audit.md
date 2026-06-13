@@ -8,29 +8,29 @@
 
 ## Summary Table
 
-| Issue ID | Title | Status |
-|---|---|---|
-| P0-1 | Review actions are not atomic | **Fixed** |
-| P0-2 | Entity source evidence not canonically represented | **Fixed** |
-| P0-3 | Claim review can create permanently under-linked claims | **Partially Fixed** |
-| P0-4 | Publication semantics incomplete / draft-backed graph edges | **Fixed** |
-| P1-1 | Entity creation slug/name race conditions | **Fixed** |
-| P1-2 | Admin review mutations lack server-side validation | **Fixed** |
-| P1-3 | `compute-confidence` PostgREST injection via interpolated filter | **Fixed** |
-| P1-4 | Relationship weight uses only one endpoint score | **Fixed** |
-| P1-5 | Review queue fetches all pending JSON without pagination | **Fixed** |
-| P1-6 | Entity manager fetches and renders all entities | **Fixed** |
-| P1-7 | Validation-failed extractions not actionable | **Fixed** |
-| P1-8 | Little targeted test coverage | **Not Fixed** |
-| P2-1 | Rate limiting implemented twice | **Fixed** |
-| P2-2 | Failed Claude batch raw response on first row only | **Fixed** |
-| P2-3 | Max-token estimate uses unique word set | **Fixed** |
-| P2-4 | Highlighting fails for paraphrased evidence | **Not Fixed** |
-| P2-5 | Destructive review actions lack guardrails | **Fixed** |
-| P2-6 | Search LIKE metacharacter injection | **Fixed** |
-| P2-7 | Stage failure handling leaves source in previous stage | **Fixed** |
-| NEW-1 | Split against published entity name fails ambiguously | **New** |
-| NEW-4 | Bulk entity publish is non-atomic | **New** |
+| Issue ID | Title                                                            | Status              |
+| -------- | ---------------------------------------------------------------- | ------------------- |
+| P0-1     | Review actions are not atomic                                    | **Fixed**           |
+| P0-2     | Entity source evidence not canonically represented               | **Fixed**           |
+| P0-3     | Claim review can create permanently under-linked claims          | **Partially Fixed** |
+| P0-4     | Publication semantics incomplete / draft-backed graph edges      | **Fixed**           |
+| P1-1     | Entity creation slug/name race conditions                        | **Fixed**           |
+| P1-2     | Admin review mutations lack server-side validation               | **Fixed**           |
+| P1-3     | `compute-confidence` PostgREST injection via interpolated filter | **Fixed**           |
+| P1-4     | Relationship weight uses only one endpoint score                 | **Fixed**           |
+| P1-5     | Review queue fetches all pending JSON without pagination         | **Fixed**           |
+| P1-6     | Entity manager fetches and renders all entities                  | **Fixed**           |
+| P1-7     | Validation-failed extractions not actionable                     | **Fixed**           |
+| P1-8     | Little targeted test coverage                                    | **Not Fixed**       |
+| P2-1     | Rate limiting implemented twice                                  | **Fixed**           |
+| P2-2     | Failed Claude batch raw response on first row only               | **Fixed**           |
+| P2-3     | Max-token estimate uses unique word set                          | **Fixed**           |
+| P2-4     | Highlighting fails for paraphrased evidence                      | **Not Fixed**       |
+| P2-5     | Destructive review actions lack guardrails                       | **Fixed**           |
+| P2-6     | Search LIKE metacharacter injection                              | **Fixed**           |
+| P2-7     | Stage failure handling leaves source in previous stage           | **Fixed**           |
+| NEW-1    | Split against published entity name fails ambiguously            | **New**             |
+| NEW-4    | Bulk entity publish is non-atomic                                | **New**             |
 
 ---
 
@@ -49,6 +49,7 @@
 ### P1-8 — Not Fixed: No targeted tests
 
 No test files were found for:
+
 - RPC transaction rollback behavior (`review_extraction_item`, `create_or_update_review_entity`)
 - Confidence scoring edge cases (zero source anchors, single entity, disconnected graph)
 - Review action validation (rejected names, invalid types, missing involved entities)
@@ -79,6 +80,7 @@ Entity "%" already exists as published. Use Merge instead.
 ```
 
 **Problems:**
+
 1. The error does not indicate which of the two split entities caused the conflict.
 2. The entire split fails atomically — no partial result, but the admin must re-enter both entity names.
 3. The UI surfaces the raw RPC error with no contextual guidance.
@@ -132,12 +134,12 @@ All critical atomicity and data integrity issues from the first audit are closed
 
 Remaining gaps before general availability:
 
-| Gap | Blocking? |
-|---|---|
+| Gap                                             | Blocking?                                           |
+| ----------------------------------------------- | --------------------------------------------------- |
 | P0-3 partial — no repair RPC for pre-fix claims | Only if branch was used for real ingestion sessions |
-| P1-8 — no focused tests | No, but a long-term risk |
-| P2-4 — substring-only highlight | No (UX only) |
-| NEW-1 — ambiguous split error | No (usability only) |
-| NEW-4 — non-atomic bulk publish | No (idempotent, low frequency) |
+| P1-8 — no focused tests                         | No, but a long-term risk                            |
+| P2-4 — substring-only highlight                 | No (UX only)                                        |
+| NEW-1 — ambiguous split error                   | No (usability only)                                 |
+| NEW-4 — non-atomic bulk publish                 | No (idempotent, low frequency)                      |
 
 Safe to merge for trusted internal admin use. Track the above in the backlog before promoting to production with external users.

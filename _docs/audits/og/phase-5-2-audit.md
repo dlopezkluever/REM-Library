@@ -2,9 +2,10 @@
 
 **Date:** 2026-05-30  
 **Branch:** `admin-injester`  
-**Scope:** Feature 2 of Phase 5 — Source upload form, file upload pipeline, source list page, and source detail page  
+**Scope:** Feature 2 of Phase 5 — Source upload form, file upload pipeline, source list page, and source detail page
 
 **Files reviewed:**
+
 - `src/pages/admin/AdminSourceNewPage.tsx`
 - `src/pages/admin/AdminSourceListPage.tsx`
 - `src/pages/admin/AdminSourceDetailPage.tsx`
@@ -206,11 +207,11 @@ The Archive button fires immediately on click with no confirmation. There's no "
 
 The following are defined identically in three or more files:
 
-| Symbol | Files |
-|---|---|
-| `formatLabels` | `AdminSourceListPage.tsx`, `AdminSourceDetailPage.tsx`, `PipelineMonitor.tsx` |
-| `stageLabels` | `AdminSourceListPage.tsx`, `AdminSourceDetailPage.tsx`, `PipelineMonitor.tsx` |
-| `FormatIcon` | `AdminSourceListPage.tsx`, `PipelineMonitor.tsx` |
+| Symbol              | Files                                                                         |
+| ------------------- | ----------------------------------------------------------------------------- |
+| `formatLabels`      | `AdminSourceListPage.tsx`, `AdminSourceDetailPage.tsx`, `PipelineMonitor.tsx` |
+| `stageLabels`       | `AdminSourceListPage.tsx`, `AdminSourceDetailPage.tsx`, `PipelineMonitor.tsx` |
+| `FormatIcon`        | `AdminSourceListPage.tsx`, `PipelineMonitor.tsx`                              |
 | `getStageClassName` | `AdminSourceListPage.tsx`, `AdminSourceDetailPage.tsx`, `PipelineMonitor.tsx` |
 
 There's also a subtle inconsistency: `PipelineMonitor`'s `getStageClassName` checks `_failed` and `review` in separate `if` branches, while the other two files combine them into one (`stage.endsWith('_failed') || stage === 'review'`). They produce the same result, but the divergence will silently drift if either is updated.
@@ -224,6 +225,7 @@ There's also a subtle inconsistency: `PipelineMonitor`'s `getStageClassName` che
 **File:** `src/lib/api/admin.ts:275–337`
 
 To compute extraction counts per source, the function:
+
 1. Fetches up to 500 sources
 2. Fetches all chunks for those sources
 3. Fetches all extractions for those chunks

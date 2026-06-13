@@ -2,6 +2,7 @@ import { supabase } from '@/lib/supabase/client'
 import type { Tables } from '@/types/database'
 import type { EntityPositionUpdate } from '@/lib/graph/types'
 import type { EntityType } from '@/types/domain'
+import { filterPublicRelationships } from '@/lib/api/relationships'
 
 export type EntityRow = Tables<'entities'>
 export type RelationshipRow = Tables<'relationships'>
@@ -85,15 +86,17 @@ export const getEntityNeighborhood = async (
   id: string,
   hops: 1 | 2 = 1
 ): Promise<EntityNeighborhood> => {
-  const { data: firstHopRelationships, error: firstHopError } = await supabase
+  const { data: firstHopRelationshipRows, error: firstHopError } = await supabase
     .from('relationships')
     .select('*')
+    .eq('status', 'active')
     .or(`from_entity_id.eq.${id},to_entity_id.eq.${id}`)
 
   if (firstHopError) {
     throw firstHopError
   }
 
+  const firstHopRelationships = await filterPublicRelationships(firstHopRelationshipRows)
   const firstHopEntityIds = unique(
     firstHopRelationships.flatMap((relationship) => [
       relationship.from_entity_id,
@@ -109,15 +112,17 @@ export const getEntityNeighborhood = async (
       .flatMap((entityId) => [`from_entity_id.eq.${entityId}`, `to_entity_id.eq.${entityId}`])
       .join(',')
 
-    const { data: secondHopRelationships, error: secondHopError } = await supabase
+    const { data: secondHopRelationshipRows, error: secondHopError } = await supabase
       .from('relationships')
       .select('*')
+      .eq('status', 'active')
       .or(filters)
 
     if (secondHopError) {
       throw secondHopError
     }
 
+    const secondHopRelationships = await filterPublicRelationships(secondHopRelationshipRows)
     relationships = Array.from(
       new Map(
         [...firstHopRelationships, ...secondHopRelationships].map((relationship) => [
@@ -150,11 +155,12 @@ export const getEntityNeighborhood = async (
   }
 
   const visibleEntityIds = new Set(entities.map((entity) => entity.id))
-  const visibleRelationships = relationships.filter(
-    (relationship) =>
-      visibleEntityIds.has(relationship.from_entity_id) &&
-      visibleEntityIds.has(relationship.to_entity_id)
-  )
+  const visibleRelationships = relationships
+    .filter(
+      (relationship) =>
+        visibleEntityIds.has(relationship.from_entity_id) &&
+        visibleEntityIds.has(relationship.to_entity_id)
+    )
 
   return { entities, relationships: visibleRelationships }
 }

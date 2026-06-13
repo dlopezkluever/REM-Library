@@ -15,9 +15,11 @@ import AdminDashboardPage from '@/pages/admin/AdminDashboardPage'
 import AdminSourceListPage from '@/pages/admin/AdminSourceListPage'
 import AdminSourceNewPage from '@/pages/admin/AdminSourceNewPage'
 import AdminSourceDetailPage from '@/pages/admin/AdminSourceDetailPage'
+import AdminSourceImpactPage from '@/pages/admin/AdminSourceImpactPage'
 import AdminReviewQueuePage from '@/pages/admin/AdminReviewQueuePage'
 import AdminEntityManagerPage from '@/pages/admin/AdminEntityManagerPage'
 import AdminClaimManagerPage from '@/pages/admin/AdminClaimManagerPage'
+import AdminRelationshipManagerPage from '@/pages/admin/AdminRelationshipManagerPage'
 import AdminSettingsPage from '@/pages/admin/AdminSettingsPage'
 import ErrorPage from '@/pages/ErrorPage'
 import {
@@ -99,9 +101,11 @@ export const router = createBrowserRouter([
           { path: '/admin/sources', element: <AdminSourceListPage /> },
           { path: '/admin/sources/new', element: <AdminSourceNewPage /> },
           { path: '/admin/sources/:id', element: <AdminSourceDetailPage /> },
+          { path: '/admin/sources/:id/impact', element: <AdminSourceImpactPage /> },
           { path: '/admin/review', element: <AdminReviewQueuePage /> },
           { path: '/admin/entities', element: <AdminEntityManagerPage /> },
           { path: '/admin/claims', element: <AdminClaimManagerPage /> },
+          { path: '/admin/relationships', element: <AdminRelationshipManagerPage /> },
           {
             path: '/admin/explorations/new',
             element: (

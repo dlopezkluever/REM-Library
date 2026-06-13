@@ -12,6 +12,10 @@ import {
   type AdminSourceRow,
 } from '@/lib/api/admin'
 import { detectSourceFormat, normalizeSourceUrl, validateSourceFile } from '@/lib/sourceUpload'
+import {
+  normalizeSourceUrlForDedup,
+  parseAndNormalizeSourceUrlForStorage,
+} from '@/lib/sourceUrl'
 
 const createSource = (
   id: string,
@@ -180,6 +184,18 @@ describe('source upload helpers', () => {
       'Source URLs must start with http:// or https://.'
     )
   })
+
+  it('uses one shared source URL normalizer for storage and deduplication', () => {
+    expect(parseAndNormalizeSourceUrlForStorage('https://example.com/path')).toBe(
+      'https://example.com/path'
+    )
+    expect(() => parseAndNormalizeSourceUrlForStorage('ftp://example.com/path')).toThrow(
+      'Source URLs must start with http:// or https://.'
+    )
+    expect(normalizeSourceUrlForDedup(' HTTPS://Example.com/path/ ')).toBe(
+      'https://example.com/path'
+    )
+  })
 })
 
 describe('admin dashboard migration', () => {
@@ -328,6 +344,15 @@ describe('admin dashboard migration', () => {
     expect(confidenceFunction).toMatch(/fromScore.*toScore|toScore.*fromScore/)
   })
 
+  it('skips archived relationships during confidence weight recomputation', () => {
+    const confidenceFunction = readFileSync(
+      join(process.cwd(), 'supabase/functions/compute-confidence/index.ts'),
+      'utf8'
+    )
+
+    expect(confidenceFunction).toContain(".eq('status', 'active')")
+  })
+
   it('confidence scoring validates entity IDs before use', () => {
     const confidenceFunction = readFileSync(
       join(process.cwd(), 'supabase/functions/compute-confidence/index.ts'),
@@ -336,5 +361,94 @@ describe('admin dashboard migration', () => {
 
     expect(confidenceFunction).toContain('uuidPattern')
     expect(confidenceFunction).toMatch(/uuidPattern\.test/)
+  })
+
+  it('adds Phase 1 audit fix backend primitives', () => {
+    const migration = readFileSync(
+      join(process.cwd(), 'supabase/migrations/20260608040000_phase1_audit_fixes.sql'),
+      'utf8'
+    )
+
+    expect(migration).toContain('weight_override double precision')
+    expect(migration).toContain('find_source_by_normalized_url')
+    expect(migration).toContain('bulk_update_claim_status')
+    expect(migration).toContain("claims.status <> 'archived'")
+    expect(migration).toContain('old_status_counts')
+  })
+
+  it('logs claim status transitions with old and new status', () => {
+    const migration = readFileSync(
+      join(process.cwd(), 'supabase/migrations/20260608030000_fix_claim_status_transitions.sql'),
+      'utf8'
+    )
+
+    expect(migration).toContain('previous_status')
+    expect(migration).toContain("'old_status', previous_status")
+    expect(migration).toContain("'new_status', next_status")
+  })
+
+  it('uses affected entity union and batched confidence recomputation for source operations', () => {
+    const adminApi = readFileSync(join(process.cwd(), 'src/lib/api/admin.ts'), 'utf8')
+    const sourceDetailPage = readFileSync(
+      join(process.cwd(), 'src/pages/admin/AdminSourceDetailPage.tsx'),
+      'utf8'
+    )
+
+    expect(adminApi).toContain('getSourceAffectedEntityIds')
+    expect(adminApi).toContain("from('claim_entities')")
+    expect(adminApi).toContain('confidenceComputationBatchSize = 200')
+    expect(adminApi).toContain("supabase.rpc('bulk_update_claim_status'")
+    expect(sourceDetailPage).toContain('getSourceAffectedEntityIds')
+    expect(sourceDetailPage).toContain('recomputeConfidenceInBatches')
+  })
+
+  it('filters public relationship APIs to active rows and applies effective weight', () => {
+    const relationshipsApi = readFileSync(
+      join(process.cwd(), 'src/lib/api/relationships.ts'),
+      'utf8'
+    )
+    const entitiesApi = readFileSync(join(process.cwd(), 'src/lib/api/entities.ts'), 'utf8')
+
+    expect(relationshipsApi).toContain(".eq('status', 'active')")
+    expect(relationshipsApi).toContain("from('entities')")
+    expect(relationshipsApi).toContain("from('claims')")
+    expect(relationshipsApi).toContain(".eq('status', 'published')")
+    expect(relationshipsApi).toContain('relationship.claim_ids.some')
+    expect(relationshipsApi).toContain('relationship.weight_override ?? relationship.weight')
+    expect(entitiesApi).toContain(".eq('status', 'active')")
+    expect(entitiesApi).toContain('filterPublicRelationships(firstHopRelationshipRows)')
+    expect(entitiesApi).toContain('filterPublicRelationships(secondHopRelationshipRows)')
+  })
+
+  it('scopes source impact bulk claim actions to explicit visible claim ids', () => {
+    const adminApi = readFileSync(join(process.cwd(), 'src/lib/api/admin.ts'), 'utf8')
+    const sourceImpactPage = readFileSync(
+      join(process.cwd(), 'src/pages/admin/AdminSourceImpactPage.tsx'),
+      'utf8'
+    )
+
+    expect(adminApi).toContain(
+      'export const unpublishSourceClaims = async (sourceId: string, claimIds: string[])'
+    )
+    expect(adminApi).toContain(
+      'export const markSourceClaimsDisputed = async (sourceId: string, claimIds: string[])'
+    )
+    expect(adminApi).toContain('const sourceClaimIds = new Set(await getSourceClaimIds(sourceId))')
+    expect(adminApi).toContain('requestedClaimIds.filter((claimId) => sourceClaimIds.has(claimId))')
+    expect(sourceImpactPage).toContain("claim.status === 'published'")
+    expect(sourceImpactPage).toContain(
+      "claim.status === 'published' || claim.status === 'draft'"
+    )
+    expect(sourceImpactPage).toContain('claimIds: action ===')
+  })
+
+  it('writes entity status audit events before publish confidence recomputation', () => {
+    const adminApi = readFileSync(join(process.cwd(), 'src/lib/api/admin.ts'), 'utf8')
+    const auditIndex = adminApi.indexOf("insertAdminAuditEvent('update_entity_status'")
+    const recomputeIndex = adminApi.indexOf("recomputeConfidenceInBatches([entityId])")
+
+    expect(auditIndex).toBeGreaterThan(-1)
+    expect(recomputeIndex).toBeGreaterThan(-1)
+    expect(auditIndex).toBeLessThan(recomputeIndex)
   })
 })

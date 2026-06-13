@@ -229,6 +229,9 @@ export default function AdminSourceListPage() {
                           <ExternalLink aria-hidden="true" className="h-3 w-3" />
                         </Link>
                       </Button>
+                      <Button asChild size="sm" variant="outline">
+                        <Link to={`/admin/sources/${source.id}/impact`}>Impact</Link>
+                      </Button>
                       <Button
                         disabled={Boolean(rerunAction.disabledReason) || rerunInFlight}
                         size="sm"

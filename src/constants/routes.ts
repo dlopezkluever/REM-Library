@@ -15,9 +15,11 @@ export const ROUTES = {
   ADMIN_SOURCES: '/admin/sources',
   ADMIN_SOURCE_NEW: '/admin/sources/new',
   ADMIN_SOURCE_DETAIL: '/admin/sources/:id',
+  ADMIN_SOURCE_IMPACT: '/admin/sources/:id/impact',
   ADMIN_REVIEW: '/admin/review',
   ADMIN_ENTITIES: '/admin/entities',
   ADMIN_CLAIMS: '/admin/claims',
+  ADMIN_RELATIONSHIPS: '/admin/relationships',
   ADMIN_SETTINGS: '/admin/settings',
   ADMIN_EXPLORATION_NEW: '/admin/explorations/new',
 } as const

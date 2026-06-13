@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Check, ChevronLeft, ChevronRight, RefreshCw, Search } from 'lucide-react'
+import { ConfidenceOverrideInput } from '@/components/admin/ConfidenceOverrideInput'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -16,6 +18,7 @@ import {
   getAdminClaimsPage,
   publishAdminClaims,
   updateAdminClaimStatus,
+  updateClaimConfidenceOverride,
   type AdminClaimListRow,
   type ContentStatus,
 } from '@/lib/api/admin'
@@ -24,11 +27,14 @@ import { cn } from '@/lib/utils'
 const adminClaimsQueryKey = ['admin', 'claims'] as const
 
 const statusClassNames: Record<ContentStatus, string> = {
-  archived: 'border-black/15 bg-stone text-[#777]',
-  disputed: 'border-terracotta/30 bg-terracotta-light text-terracotta-dark',
+  archived: 'border-terracotta/25 bg-terracotta-light text-terracotta-dark',
+  disputed: 'border-amber-300/70 bg-amber-50 text-amber-800',
   draft: 'border-iris/30 bg-iris-light text-iris-dark',
   published: 'border-verdigris bg-verdigris-light text-verdigris-dark',
 }
+
+const ARCHIVE_CLAIM_CONFIRMATION =
+  'Archive this claim? It will no longer appear publicly and cannot be easily restored.'
 
 const getMutationError = (error: unknown) => {
   if (error instanceof Error) {
@@ -40,8 +46,9 @@ const getMutationError = (error: unknown) => {
 
 export default function AdminClaimManagerPage() {
   const queryClient = useQueryClient()
+  const [searchParams] = useSearchParams()
   const [page, setPage] = useState(0)
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = useState(searchParams.get('search') ?? '')
   const [statusFilter, setStatusFilter] = useState<ContentStatus | 'all'>('all')
   const [selectedClaimIds, setSelectedClaimIds] = useState<string[]>([])
 
@@ -74,6 +81,18 @@ export default function AdminClaimManagerPage() {
       await queryClient.invalidateQueries({ queryKey: ['admin', 'entities'] })
       await queryClient.invalidateQueries({ queryKey: ['admin', 'content-stats'] })
       await queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard-counts'] })
+    },
+  })
+
+  const confidenceOverrideMutation = useMutation({
+    mutationFn: ({ claim, override }: { claim: AdminClaimListRow; override: number | null }) =>
+      updateClaimConfidenceOverride(claim.id, override),
+    onSuccess: async (_result, variables) => {
+      await queryClient.invalidateQueries({ queryKey: adminClaimsQueryKey })
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'content-stats'] })
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard-counts'] })
+      await queryClient.invalidateQueries({ queryKey: ['claim', variables.claim.id] })
+      await queryClient.invalidateQueries({ queryKey: ['entity'] })
     },
   })
 
@@ -188,10 +207,10 @@ export default function AdminClaimManagerPage() {
               </TableHead>
               <TableHead>Statement</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Confidence</TableHead>
+              <TableHead>Score</TableHead>
               <TableHead>Entities</TableHead>
               <TableHead>Evidence</TableHead>
-              <TableHead className="text-right">Publication</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -222,10 +241,14 @@ export default function AdminClaimManagerPage() {
             {claims.map((claim) => {
               const isSelected = selectedSet.has(claim.id)
               const isPublished = claim.status === 'published'
+              const isDisputed = claim.status === 'disputed'
               const nextStatus: ContentStatus = isPublished ? 'draft' : 'published'
               const updating =
                 toggleStatusMutation.isPending &&
                 toggleStatusMutation.variables?.claim.id === claim.id
+              const savingOverride =
+                confidenceOverrideMutation.isPending &&
+                confidenceOverrideMutation.variables?.claim.id === claim.id
 
               return (
                 <TableRow key={claim.id}>
@@ -246,8 +269,17 @@ export default function AdminClaimManagerPage() {
                   <TableCell>
                     <Badge className={statusClassNames[claim.status]}>{claim.status}</Badge>
                   </TableCell>
-                  <TableCell className="font-body text-sm text-ink">
-                    {(claim.confidence_override ?? claim.confidence_score).toFixed(2)}
+                  <TableCell>
+                    <ConfidenceOverrideInput
+                      key={`${claim.id}-${claim.confidence_override ?? 'auto'}`}
+                      computedScore={claim.confidence_score}
+                      disabled={savingOverride}
+                      label={claim.statement}
+                      override={claim.confidence_override}
+                      onSave={(override) =>
+                        confidenceOverrideMutation.mutateAsync({ claim, override })
+                      }
+                    />
                   </TableCell>
                   <TableCell className="max-w-[260px] truncate font-body text-sm text-[#777]">
                     {claim.entityNames.length > 0 ? claim.entityNames.join(', ') : 'None'}
@@ -256,15 +288,48 @@ export default function AdminClaimManagerPage() {
                     {claim.evidenceCount}
                   </TableCell>
                   <TableCell>
-                    <div className="flex justify-end">
+                    <div className="flex flex-wrap justify-end gap-2">
+                      {isDisputed ? (
+                        <Button
+                          disabled={updating}
+                          size="sm"
+                          type="button"
+                          variant="outline"
+                          onClick={() => toggleStatusMutation.mutate({ claim, status: 'draft' })}
+                        >
+                          Set draft
+                        </Button>
+                      ) : null}
                       <Button
-                        disabled={updating || claim.status === 'disputed'}
+                        disabled={updating}
                         size="sm"
                         type="button"
                         variant={isPublished ? 'outline' : 'default'}
                         onClick={() => toggleStatusMutation.mutate({ claim, status: nextStatus })}
                       >
                         {isPublished ? 'Set draft' : 'Publish'}
+                      </Button>
+                      <Button
+                        disabled={updating || isDisputed}
+                        size="sm"
+                        type="button"
+                        variant="outline"
+                        onClick={() => toggleStatusMutation.mutate({ claim, status: 'disputed' })}
+                      >
+                        Mark disputed
+                      </Button>
+                      <Button
+                        disabled={updating}
+                        size="sm"
+                        type="button"
+                        variant="destructive"
+                        onClick={() => {
+                          if (window.confirm(ARCHIVE_CLAIM_CONFIRMATION)) {
+                            toggleStatusMutation.mutate({ claim, status: 'archived' })
+                          }
+                        }}
+                      >
+                        Archive
                       </Button>
                     </div>
                   </TableCell>

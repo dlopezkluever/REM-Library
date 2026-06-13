@@ -1,4 +1,5 @@
 # Phase 4 — Community Feedback & Nice-to-Have Features
+
 ## Spec and Dev Plan
 
 ---
@@ -9,12 +10,12 @@ Phase 4 adds the community interaction layer and a small set of non-critical pol
 
 The four work items are:
 
-| # | Feature | Type |
-|---|---------|------|
-| 4.1 | Pre-moderated comment system on entity, claim, and source pages | Community |
-| 4.2 | Voting / feedback signals with `content_votes` table and community score display | Community |
-| 4.3 | Admin review queue prioritization using vote counts and admin flags | Admin tooling |
-| 4.4 | Entity relationship visualization (mini-graph) on claim detail pages | Graph / UI |
+| #   | Feature                                                                          | Type          |
+| --- | -------------------------------------------------------------------------------- | ------------- |
+| 4.1 | Pre-moderated comment system on entity, claim, and source pages                  | Community     |
+| 4.2 | Voting / feedback signals with `content_votes` table and community score display | Community     |
+| 4.3 | Admin review queue prioritization using vote counts and admin flags              | Admin tooling |
+| 4.4 | Entity relationship visualization (mini-graph) on claim detail pages             | Graph / UI    |
 
 None of these are blockers for source ingestion, public launch, or post-launch growth. They are the layer that turns the platform from a curated read-only reference into something users interact with — but that interaction must be built on top of a stable canonical graph, not before it.
 
@@ -25,12 +26,14 @@ None of these are blockers for source ingestion, public launch, or post-launch g
 ### 2.1 What exists
 
 **Community infrastructure (none):**
+
 - No `comments`, `discussions`, `threads`, `votes`, `reactions`, or `user_submissions` table exists in any migration.
 - No comment or discussion components in `src/components/` or `src/pages/`.
 - No upvote, like, flag, or reaction system anywhere in the codebase.
 - The admin review queue ordering is purely chronological (`min(extractions.created_at)`, `supabase/migrations/20260531130000_review_queue_hardening.sql:911`). No user signal touches any ranking path.
 
 **Graph infrastructure (partial):**
+
 - `GraphCanvas.tsx` — 2D graph renderer using Sigma.js. Node clicks fire `setActiveNodeId`.
 - `GraphCanvas3D.tsx` — 3D graph renderer using force-graph. Physics simulation, node clicks fire `setActiveNodeId`.
 - `GraphSidePanel.tsx` — right-side sheet drawer (Radix UI Dialog) that opens on node click, showing entity name, type, description, confidence bar, top 3 connected entities, and "View full entry" link.
@@ -41,6 +44,7 @@ None of these are blockers for source ingestion, public launch, or post-launch g
 - `featured_connections` (`supabase/migrations/20260527010000_featured_connections.sql`) — homepage-only curated entity-to-entity cards.
 
 **Auth and roles:**
+
 - Three roles in `public.admin_role` enum (`supabase/migrations/20260523010000_enums.sql:38`): `super_admin`, `editor`, `viewer`.
 - No public user registration path. No member, contributor, or trusted-user role.
 - `is_admin()` returns true for `super_admin` and `editor`. `has_internal_access()` returns true for all three.
@@ -48,6 +52,7 @@ None of these are blockers for source ingestion, public launch, or post-launch g
 
 **Phase 3 prerequisites (must be built before Phase 4):**
 Phase 3 adds:
+
 - Public user registration and community roles: `public`, `contributor`, `trusted_contributor`, `editor`, `super_admin`.
 - `suggestions` table — users propose claims or flag content. Entries enter admin review queue; never directly update live tables.
 - Basic community accounts powering Phase 4 comments and votes.
@@ -103,6 +108,7 @@ After Phase 4 is complete:
 **Purpose:** Let community users annotate entities, claims, and sources with contextual notes, corrections, or questions, all subject to admin approval before public display.
 
 **Behavior:**
+
 - Authenticated users (role `contributor` or higher) can submit a comment on any entity, claim, or source page.
 - Submitted comments are stored with `status = 'pending'`. They are not visible to other users.
 - Admins see a "Pending Comments" queue (or inline pending indicator on entity/claim/source admin pages).
@@ -113,6 +119,7 @@ After Phase 4 is complete:
 - Comment text is plain text or minimal markdown (no HTML). Max length 2000 characters.
 
 **Out of scope for 4.1:**
+
 - Reactions on individual comments.
 - Comment voting.
 - Email notifications for comment replies.
@@ -123,6 +130,7 @@ After Phase 4 is complete:
 **Purpose:** Let community users express agreement or disagreement with content, surfacing community sentiment without corrupting admin-controlled confidence rankings.
 
 **Behavior:**
+
 - Authenticated users can cast a +1 (upvote) or -1 (downvote) on any entity, claim, or source. One vote per user per target. Re-clicking the same value removes the vote.
 - Vote aggregates are displayed as `community_score` (net sum of +1/-1 votes) alongside the existing `confidence_score` display.
 - `community_score` is purely cosmetic — it does not feed into `confidence_score` computation and does not affect claim sort order on entity pages.
@@ -130,6 +138,7 @@ After Phase 4 is complete:
 - A "Flag" action (distinct from voting) lets users mark content as potentially incorrect, spam, or inappropriate. Flags are stored with a `reason` enum value. Flagged items appear with a flag badge in the admin manager pages.
 
 **Out of scope for 4.2:**
+
 - Letting votes automatically adjust `confidence_score` or `confidence_override`.
 - Weighted votes based on user reputation or role.
 - Public leaderboards of top-voted content.
@@ -139,6 +148,7 @@ After Phase 4 is complete:
 **Purpose:** Surface high-community-signal items to the top of the admin extraction review queue, without removing chronological fallback.
 
 **Behavior:**
+
 - The extraction review queue in `ExtractionReviewPanel.tsx` (or its parent admin queue page) gains a sort dropdown with options: "Oldest first" (current default), "Most flagged", "Highest net votes", "Newest first".
 - "Most flagged" sorts by the count of flag actions targeting claims or entities that are pending in the queue.
 - "Highest net votes" sorts by the community score of already-published claims whose source extractions are still pending review for other items (i.e., the source has been engaged with but not all its content is reviewed).
@@ -146,6 +156,7 @@ After Phase 4 is complete:
 - The admin can always return to chronological ("Oldest first") ordering.
 
 **Out of scope for 4.3:**
+
 - Automatic re-ordering without admin action.
 - Community users seeing the queue or its size.
 - Votes affecting RLS or row visibility on any table.
@@ -155,6 +166,7 @@ After Phase 4 is complete:
 **Purpose:** Give `ClaimDetailPage.tsx` a spatial view of the entities involved in the claim and their relationships, matching the `MiniGraph` experience on `EntityDetailPage.tsx`.
 
 **Behavior:**
+
 - Below the claim statement on `ClaimDetailPage.tsx`, render a `ClaimMiniGraph` component showing:
   - The entities directly referenced in the claim (from `claim_entities`).
   - The relationships between those entities (from `relationships` where both endpoint entity IDs are in the claim's entity set).
@@ -165,6 +177,7 @@ After Phase 4 is complete:
 - The graph is non-interactive for zoom/pan on mobile; interactive on desktop.
 
 **Out of scope for 4.4:**
+
 - Full knowledge graph mode on claim pages.
 - Ability to click a relationship edge to navigate anywhere.
 - Graph editing from the claim page.
@@ -228,6 +241,7 @@ CREATE POLICY "comments admin update" ON public.comments
 ```
 
 Notes:
+
 - `parent_id` supports one-level threading. A comment with a non-null `parent_id` is a reply; replies cannot themselves have replies (enforced at app layer).
 - `reviewer_note` is the admin's message back when `status = 'needs_clarification'`.
 - `updated_at` should be managed by a trigger (pattern already exists for other tables).
@@ -453,6 +467,7 @@ getClaimGraph(claimId): Promise<ClaimGraphData>
 Props: `targetType: 'entity' | 'claim' | 'source'`, `targetId: string`
 
 Structure:
+
 - Collapsible section titled "Community Notes" with approved comment count badge.
 - If no approved comments and user not logged in: "No community notes yet."
 - If user is `contributor` or higher: shows a "Add a note" form (textarea + submit button).
@@ -464,6 +479,7 @@ Structure:
 **New component:** `src/components/community/CommentForm.tsx`
 
 Inline form with:
+
 - Textarea (max 2000 chars, character count display).
 - Submit button disabled until at least 10 characters entered.
 - "Reply to [name]" header when in reply mode.
@@ -477,6 +493,7 @@ Inline form with:
 Props: `targetType`, `targetId`
 
 Structure:
+
 - Upvote button (thumbs up / arrow up) with current upvote count.
 - Downvote button with downvote count.
 - Net score displayed between them.
@@ -485,6 +502,7 @@ Structure:
 - Optimistic UI: update count immediately, roll back on API error.
 
 Placement:
+
 - `EntityDetailPage.tsx`: below the `AttestationBar` component.
 - `ClaimDetailPage.tsx`: below the claim statement.
 - `SourceDetailPage.tsx`: below the source metadata header.
@@ -497,6 +515,7 @@ Placement:
 Props: `targetType`, `targetId`
 
 Structure:
+
 - Small flag icon button. On click: opens a modal with reason select and optional notes field.
 - After submitting: button becomes "Flagged" state (filled icon, disabled).
 - One flag per user per target enforced by DB unique constraint.
@@ -515,11 +534,13 @@ Route: `/admin/comments`
 - Bulk approve, bulk reject.
 
 **Admin integration on detail pages:**
+
 - `AdminEntityManagerPage.tsx` and `AdminClaimManagerPage.tsx`: show pending comment count badge next to entity/claim name. Clicking navigates to the comment queue filtered by that entity/claim.
 
 ### 9.5 Admin flag queue
 
 **Addition to existing admin pages** (not a new page — add to `AdminClaimManagerPage.tsx` and `AdminEntityManagerPage.tsx`):
+
 - Flag count badge next to entity/claim name.
 - Clicking the badge opens a side panel listing all open flags for that item (reason, reporter, notes).
 - Admin can resolve or dismiss flags inline.
@@ -527,6 +548,7 @@ Route: `/admin/comments`
 ### 9.6 Review queue sort control
 
 **Change to existing extraction review queue page:**
+
 - Add a `<select>` sort dropdown above the queue list:
   - "Oldest first" (default)
   - "Newest first"
@@ -542,6 +564,7 @@ Route: `/admin/comments`
 Props: `claimId: string`, `height?: number` (default 300)
 
 Structure:
+
 - Fetches graph data via `getClaimGraph(claimId)`.
 - Renders a small force-directed graph using the same library as `MiniGraph` on `EntityDetailPage.tsx`.
 - Claim's direct entities: rendered at full opacity with colored badges matching entity type.
@@ -552,12 +575,14 @@ Structure:
 - Empty state (claim has no entities — should not happen in practice): hidden.
 
 **Integration in `ClaimDetailPage.tsx`:**
+
 - Insert `<ClaimMiniGraph claimId={claim.id} />` between the claim statement section and the evidence (source anchors) section.
 - Wrap in a collapsible if the entity count is 0 (hide entirely) or > 10 (collapse by default to avoid overwhelming the page).
 
 **Community score display on existing pages:**
 
 Add `community_score` display to:
+
 - `AdminClaimManagerPage.tsx` — new column in claim table: "Community Score" (net votes).
 - `AdminEntityManagerPage.tsx` — same.
 - Both pages already show `confidence_score`; `community_score` appears beside it, visually distinct (e.g., grey text vs. the existing confidence color scale).
@@ -571,6 +596,7 @@ Add `community_score` display to:
 **1.1** Create migration file: `supabase/migrations/20260608010000_phase4_community.sql`
 
 Subtasks:
+
 - Create `comments` table with all columns, indexes, and RLS policies (section 7.1).
 - Create `content_votes` table with all columns, indexes, and RLS policies (section 7.2).
 - Create `content_flags` table with all columns, indexes, and RLS policies (section 7.3).
@@ -579,6 +605,7 @@ Subtasks:
 - Test: manually insert a comment and vote as test user, verify RLS blocks unauthenticated writes, verify admin can read pending comments.
 
 **Acceptance criteria:**
+
 - `comments`, `content_votes`, `content_flags` tables exist in remote Supabase.
 - `community_scores` and `open_flag_counts` views return correct aggregates.
 - Anonymous reads of `comments` return only `status = 'approved'` rows.
@@ -591,6 +618,7 @@ Subtasks:
 **2.1** Create `src/lib/api/community.ts` with all comment, vote, and flag functions (section 8.1–8.3).
 
 Subtasks:
+
 - `getApprovedComments(targetType, targetId)` — include author profile join for display name.
 - `submitComment(targetType, targetId, body, parentId?)` — validate body length on client before calling.
 - `updateOwnPendingComment(commentId, body)`.
@@ -602,6 +630,7 @@ Subtasks:
 - `getUserFlag(targetType, targetId)` — check if user already flagged this target.
 
 **2.2** Add admin comment/flag functions to `src/lib/api/admin.ts`:
+
 - `getPendingComments(page, filters)`.
 - `approveComment(commentId)`.
 - `rejectComment(commentId)`.
@@ -615,6 +644,7 @@ Subtasks:
 **2.4** Add `getClaimGraph(claimId)` to `src/lib/api/claims.ts` (section 8.5).
 
 **Acceptance criteria:**
+
 - `submitComment` creates a row with `status = 'pending'` and `author_id = auth.uid()`.
 - `getApprovedComments` returns zero rows for a target with only pending comments.
 - `castVote` on a target twice (same value) updates instead of inserting a duplicate.
@@ -629,6 +659,7 @@ Subtasks:
 **3.1** Create `src/components/community/CommentForm.tsx`.
 
 Subtasks:
+
 - Textarea with 2000-character limit and live counter.
 - Submit button disabled below 10 characters.
 - Reply mode: show "Reply to [name]" header, pass `parentId` to `submitComment`.
@@ -638,6 +669,7 @@ Subtasks:
 **3.2** Create `src/components/community/CommentSection.tsx`.
 
 Subtasks:
+
 - Fetch approved comments with `getApprovedComments` on mount.
 - Render flat list of approved top-level comments, each followed by their approved replies.
 - Show "Community Notes (N)" header; collapse if 0 approved comments and user is not logged in.
@@ -646,11 +678,13 @@ Subtasks:
 - Admin badge on comments from admin users.
 
 **3.3** Integrate `CommentSection` into:
+
 - `src/pages/entity/EntityDetailPage.tsx` — append at bottom of page.
 - `src/pages/claims/ClaimDetailPage.tsx` — append at bottom.
 - `src/pages/sources/SourceDetailPage.tsx` — append at bottom.
 
 **Acceptance criteria:**
+
 - Approved comments are visible to all visitors.
 - Pending comments are visible only to their author.
 - Admin users see all comments on the admin manager pages.
@@ -664,6 +698,7 @@ Subtasks:
 **4.1** Create `src/components/community/VoteWidget.tsx`.
 
 Subtasks:
+
 - Fetch `getCommunityScore` and `getUserVote` on mount.
 - Render upvote/downvote buttons with counts and net score.
 - Optimistic UI update on vote; rollback on error.
@@ -673,6 +708,7 @@ Subtasks:
 **4.2** Create `src/components/community/FlagButton.tsx`.
 
 Subtasks:
+
 - Flag icon; on click opens modal (Radix UI Dialog, consistent with rest of codebase).
 - Reason select (factually incorrect, spam, inappropriate, duplicate, needs source, other).
 - Optional notes textarea (500 char max).
@@ -680,17 +716,20 @@ Subtasks:
 - Check `getUserFlag` on mount to initialize already-flagged state.
 
 **4.3** Integrate `VoteWidget` into:
+
 - `EntityDetailPage.tsx` — below `AttestationBar`.
 - `ClaimDetailPage.tsx` — below claim statement.
 - `SourceDetailPage.tsx` — below source metadata.
 - `GraphSidePanel.tsx` — compact net-score-only variant below confidence bar.
 
 **4.4** Integrate `FlagButton` into:
+
 - `EntityDetailPage.tsx` — near entity title or in page action bar.
 - `ClaimDetailPage.tsx` — near claim title.
 - `SourceDetailPage.tsx` — near source title.
 
 **Acceptance criteria:**
+
 - Vote counts update immediately (optimistic) and persist on reload.
 - Changing a vote from +1 to -1 produces a net change of -2 in displayed score.
 - Flag modal submits with reason; re-opening shows "Flagged" state.
@@ -704,6 +743,7 @@ Subtasks:
 **5.1** Create `src/pages/admin/AdminCommentQueuePage.tsx`.
 
 Subtasks:
+
 - Paginated table using existing admin table patterns.
 - Columns: Target (linked), Author, Submitted, Preview, Status, Actions.
 - Action buttons: Approve, Reject, Request Clarification.
@@ -718,6 +758,7 @@ Subtasks:
 **5.4** Add pending comment count badges to `AdminEntityManagerPage.tsx` and `AdminClaimManagerPage.tsx` rows.
 
 **Acceptance criteria:**
+
 - Approving a comment changes its status and it becomes visible on the public page immediately.
 - Rejecting a comment removes it from the public-facing comment section.
 - "Request Clarification" sets status and stores reviewer note; author sees "Admin requested clarification: [note]" on their pending comment.
@@ -730,6 +771,7 @@ Subtasks:
 **6.1** Add flag count column to `AdminClaimManagerPage.tsx` and `AdminEntityManagerPage.tsx` tables.
 
 Subtasks:
+
 - New column "Flags" showing open flag count from `getFlagCountForTarget`.
 - Clicking the count opens a side panel (`src/components/admin/FlagDetailPanel.tsx`, new component) listing all open flags for that item.
 - Each flag row shows: reason, reporter display name, notes, submitted time.
@@ -738,6 +780,7 @@ Subtasks:
 **6.2** Create `src/components/admin/FlagDetailPanel.tsx` (Radix Sheet or Dialog, consistent with existing pattern).
 
 **Acceptance criteria:**
+
 - Flag count badge visible on every claim and entity row in admin manager.
 - Opening the flag panel shows all open flags for that item.
 - Resolving a flag removes it from open count; dismissing same.
@@ -755,6 +798,7 @@ Subtasks:
 **7.4** Wire sort selection to state; re-fetch queue on change.
 
 **Acceptance criteria:**
+
 - Switching to "Most flagged" re-orders the queue to surface items with open flags first.
 - "Oldest first" returns to original chronological behavior.
 - Sort selection resets to "Oldest first" on page reload (not persisted).
@@ -766,6 +810,7 @@ Subtasks:
 **8.1** Create `src/components/claim/ClaimMiniGraph.tsx`.
 
 Subtasks:
+
 - Call `getClaimGraph(claimId)` on mount; show skeleton while loading.
 - Render force-directed graph using the same library as `MiniGraph` (read `src/components/entity/MiniGraph.tsx` or equivalent to match exact library and pattern).
 - Direct claim entities: full opacity, entity-type color badge.
@@ -776,9 +821,11 @@ Subtasks:
 - Collapse by default if entity count >10.
 
 **8.2** Integrate `ClaimMiniGraph` into `src/pages/claims/ClaimDetailPage.tsx`:
+
 - Insert between the claim statement section and the evidence/source-anchors section.
 
 **Acceptance criteria:**
+
 - Opening a claim page for a claim with entities shows the mini-graph below the claim statement.
 - Claim's direct entities are visually distinct from neighbors.
 - Clicking a node navigates to the correct entity page.
@@ -790,6 +837,7 @@ Subtasks:
 ## 11. Testing Plan
 
 **Unit / integration tests (Supabase migrations):**
+
 - RLS: anonymous user cannot INSERT into `comments`, `content_votes`, `content_flags`.
 - RLS: authenticated non-admin can INSERT but not SELECT other users' pending comments.
 - RLS: admin can SELECT all comment statuses.
@@ -799,20 +847,20 @@ Subtasks:
 
 **Manual / E2E scenarios:**
 
-| Scenario | Expected result |
-|----------|----------------|
-| Submit a comment as contributor | Comment appears pending; not visible to other users |
-| Admin approves comment | Comment appears publicly on entity/claim/source page |
-| Admin rejects comment | Comment disappears from all views |
-| Submit a +1 vote, refresh | Vote count +1; user's vote remembered |
-| Change vote to -1 | Net score drops by 2 |
-| Remove vote | Net score returns to original; button shows unvoted state |
-| Flag a claim as "factually incorrect" | Flag stored; admin sees flag count badge on claim row |
-| Admin dismisses flag | Flag count decrements; flag panel no longer shows it |
-| Sort queue by "most flagged" | Items with open flags appear at top |
-| Open claim page with entities | ClaimMiniGraph renders below claim statement |
-| Click entity node in ClaimMiniGraph | Navigates to `/entity/:slug` |
-| Submit vote while not logged in | Vote buttons are disabled; counts still visible |
+| Scenario                              | Expected result                                           |
+| ------------------------------------- | --------------------------------------------------------- |
+| Submit a comment as contributor       | Comment appears pending; not visible to other users       |
+| Admin approves comment                | Comment appears publicly on entity/claim/source page      |
+| Admin rejects comment                 | Comment disappears from all views                         |
+| Submit a +1 vote, refresh             | Vote count +1; user's vote remembered                     |
+| Change vote to -1                     | Net score drops by 2                                      |
+| Remove vote                           | Net score returns to original; button shows unvoted state |
+| Flag a claim as "factually incorrect" | Flag stored; admin sees flag count badge on claim row     |
+| Admin dismisses flag                  | Flag count decrements; flag panel no longer shows it      |
+| Sort queue by "most flagged"          | Items with open flags appear at top                       |
+| Open claim page with entities         | ClaimMiniGraph renders below claim statement              |
+| Click entity node in ClaimMiniGraph   | Navigates to `/entity/:slug`                              |
+| Submit vote while not logged in       | Vote buttons are disabled; counts still visible           |
 
 ---
 
@@ -895,19 +943,23 @@ The following are explicitly not part of Phase 4. Do not implement them during t
 **Build Phase 4 in this order:**
 
 **First (unblocked by each other, can parallelize):**
+
 - Database migration for `comments`, `content_votes`, `content_flags`, and the two views.
 - `community.ts` API layer (no UI dependencies).
 - `getClaimGraph` in `claims.ts` (no UI dependencies).
 
 **Second:**
+
 - `VoteWidget` and `FlagButton` components (depend on API layer).
 - `ClaimMiniGraph` component (depends on `getClaimGraph`).
 
 **Third:**
+
 - `CommentSection` and `CommentForm` (depend on both API and vote/flag components for consistent interaction patterns).
 - Admin `CommentQueuePage` and flag integration in manager pages.
 
 **Fourth:**
+
 - Review queue sort control (the smallest change, with the most existing infrastructure to lean on).
 - Integration of all components into `EntityDetailPage`, `ClaimDetailPage`, `SourceDetailPage`.
 
