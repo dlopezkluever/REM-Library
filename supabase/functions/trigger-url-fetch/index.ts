@@ -32,6 +32,7 @@ interface ChunkInsert {
 
 const userAgent = 'AlexandriaBot/1.0'
 const minimumWordCount = 200
+const maxDownloadBytes = 1_500_000
 const targetWordsPerChunk = 500
 
 const wordCount = (text: string) => text.match(/\S+/g)?.length ?? 0
@@ -138,6 +139,46 @@ const getAllowedDomain = async (
   return data
 }
 
+const readResponseTextWithLimit = async (response: Response) => {
+  const reader = response.body?.getReader()
+
+  if (!reader) {
+    throw new Error('Response body is not readable.')
+  }
+
+  const chunks: Uint8Array[] = []
+  let totalBytes = 0
+
+  while (true) {
+    const { done, value } = await reader.read()
+
+    if (done) {
+      break
+    }
+
+    totalBytes += value.byteLength
+
+    if (totalBytes > maxDownloadBytes) {
+      await reader.cancel()
+      throw new Error(
+        'This URL returned too much content (over 1.5MB). Consider a more specific URL.'
+      )
+    }
+
+    chunks.push(value)
+  }
+
+  const merged = new Uint8Array(totalBytes)
+  let offset = 0
+
+  for (const chunk of chunks) {
+    merged.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+
+  return new TextDecoder().decode(merged)
+}
+
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -160,30 +201,37 @@ Deno.serve(async (request) => {
       .single<SourceRow>()
 
     if (sourceError || !source) {
-      throw new Error('Source was not found.')
+      return jsonResponse({ error: 'Source was not found.' }, 400)
     }
-
-    canUpdateSource = true
 
     if (source.format !== 'url') {
-      throw new Error('Only URL-format sources can be fetched.')
+      return jsonResponse({ error: 'Only URL-format sources can be fetched.' }, 400)
     }
 
-    if (source.pipeline_stage !== 'uploaded') {
-      throw new Error('Only uploaded URL sources can be fetched.')
+    if (source.pipeline_stage !== 'uploaded' && source.pipeline_stage !== 'chunking_failed') {
+      return jsonResponse({ error: 'Source is not in a fetchable state.' }, 400)
     }
 
     if (!source.url) {
-      throw new Error('Source URL is required.')
+      return jsonResponse({ error: 'Source URL is required.' }, 400)
     }
 
-    const url = new URL(source.url)
+    let url: URL
+
+    try {
+      url = new URL(source.url)
+    } catch {
+      return jsonResponse({ error: 'Source URL is invalid.' }, 400)
+    }
+
     const hostname = url.hostname.toLowerCase()
     const allowedDomain = await getAllowedDomain(supabase, hostname)
 
     if (!allowedDomain) {
-      throw new Error(`Domain is not allowlisted: ${hostname}.`)
+      return jsonResponse({ error: `Domain is not allowlisted: ${hostname}.` }, 400)
     }
+
+    canUpdateSource = true
 
     const response = await fetch(url, {
       headers: {
@@ -195,7 +243,18 @@ Deno.serve(async (request) => {
       throw new Error(`URL returned HTTP ${response.status}.`)
     }
 
-    const html = await response.text()
+    const contentType = response.headers.get('content-type')?.toLowerCase() ?? ''
+
+    if (
+      contentType &&
+      !contentType.includes('text/html') &&
+      !contentType.includes('text/plain') &&
+      !contentType.includes('application/xhtml+xml')
+    ) {
+      throw new Error(`URL returned unsupported content type: ${contentType}.`)
+    }
+
+    const html = await readResponseTextWithLimit(response)
     const text = stripHtmlToText(html)
 
     if (wordCount(text) < minimumWordCount) {
