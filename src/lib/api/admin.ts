@@ -1187,6 +1187,8 @@ export const triggerSiteCrawl = async (rootUrl: string) => {
   return data as {
     created: Array<{ id: string; title: string; url: string; word_count: number }>
     skipped: Array<{ reason: string; url: string }>
+    total_discovered: number
+    truncated: boolean
   }
 }
 
@@ -1321,8 +1323,15 @@ export const updateUrlIngestionDomainEnabled = async (domainId: string, enabled:
   return data
 }
 
-export const getAdminSuggestions = async (): Promise<AdminSuggestionRow[]> => {
-  const { data, error } = await supabase
+export const getAdminSuggestions = async (params?: {
+  status?: AdminSuggestionRow['status']
+  type?: AdminSuggestionRow['type']
+  page?: number
+  pageSize?: number
+}): Promise<AdminSuggestionRow[]> => {
+  const { status, type, page = 0, pageSize = 50 } = params ?? {}
+
+  let query = supabase
     .from('suggestions')
     .select(
       `
@@ -1333,6 +1342,17 @@ export const getAdminSuggestions = async (): Promise<AdminSuggestionRow[]> => {
     `
     )
     .order('created_at', { ascending: false })
+    .range(page * pageSize, (page + 1) * pageSize - 1)
+
+  if (status) {
+    query = query.eq('status', status)
+  }
+
+  if (type) {
+    query = query.eq('type', type)
+  }
+
+  const { data, error } = await query
 
   if (error) {
     throw error

@@ -10,7 +10,7 @@ import { ROUTES } from '@/constants/routes'
 export default function AdminLoginPage() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { session, signIn } = useAuth()
+  const { session, role, isLoading, signIn } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -18,10 +18,12 @@ export default function AdminLoginPage() {
   const redirectDestination = getAdminRedirectDestination(location.state)
 
   useEffect(() => {
-    if (session) {
-      navigate(redirectDestination, { replace: true })
+    if (session && !isLoading) {
+      // Contributors have no admin pages — send them to the public graph.
+      const destination = role === 'contributor' ? ROUTES.GRAPH : redirectDestination
+      navigate(destination, { replace: true })
     }
-  }, [navigate, redirectDestination, session])
+  }, [navigate, redirectDestination, role, isLoading, session])
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -30,7 +32,7 @@ export default function AdminLoginPage() {
 
     try {
       await signIn(email, password)
-      navigate(redirectDestination, { replace: true })
+      // Navigation is handled by the useEffect watching session + role.
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Unable to sign in.')
     } finally {
