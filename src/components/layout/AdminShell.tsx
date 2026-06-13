@@ -7,6 +7,7 @@ import {
   FileText,
   GitPullRequestDraft,
   GitBranch,
+  Globe,
   LogOut,
   ScrollText,
   Settings,
@@ -24,6 +25,7 @@ const navItems = [
   { to: ROUTES.ADMIN_CLAIMS, label: 'Claims', icon: FileText },
   { to: ROUTES.ADMIN_RELATIONSHIPS, label: 'Relationships', icon: GitBranch },
   { to: ROUTES.ADMIN_EXPLORATION_NEW, label: 'New Exploration', icon: Compass },
+  { to: ROUTES.ADMIN_URL_DOMAINS, label: 'URL Domains', icon: Globe },
   { to: ROUTES.ADMIN_SETTINGS, label: 'Settings', icon: Settings },
 ]
 

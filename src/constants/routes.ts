@@ -21,5 +21,6 @@ export const ROUTES = {
   ADMIN_CLAIMS: '/admin/claims',
   ADMIN_RELATIONSHIPS: '/admin/relationships',
   ADMIN_SETTINGS: '/admin/settings',
+  ADMIN_URL_DOMAINS: '/admin/settings/url-domains',
   ADMIN_EXPLORATION_NEW: '/admin/explorations/new',
 } as const
