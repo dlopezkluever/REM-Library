@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { Link } from 'react-router-dom'
 import { getSignedSourceFileUrl, getSourceById } from '@/lib/api/sources'
 import { formatTimestamp } from '@/lib/format'
@@ -20,40 +20,44 @@ export const InlineMediaPlayer = ({
 }: InlineMediaPlayerProps) => {
   const mediaRef = useRef<HTMLMediaElement | null>(null)
   const [signedUrl, setSignedUrl] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
   const [failed, setFailed] = useState(false)
+  const retryCountRef = useRef(0)
   const sourcePath = `/source/${sourceId}#t-${startSec}`
-  const src = useMemo(() => (signedUrl ? `${signedUrl}#t=${startSec}` : null), [signedUrl, startSec])
+  const src = signedUrl ? `${signedUrl}#t=${startSec}` : null
+
+  const doFetch = useCallback(async (): Promise<string> => {
+    const source = await getSourceById(sourceId)
+    if (!source.file_path) throw new Error('Source file is not hosted.')
+    return getSignedSourceFileUrl(source.file_path)
+  }, [sourceId])
 
   useEffect(() => {
     let cancelled = false
+    retryCountRef.current = 0
+    setLoading(true)
+    setFailed(false)
+    setSignedUrl(null)
 
-    const loadSignedUrl = async () => {
-      try {
-        const source = await getSourceById(sourceId)
-
-        if (!source.file_path) {
-          throw new Error('Source file is not hosted.')
-        }
-
-        const url = await getSignedSourceFileUrl(source.file_path)
-
+    void doFetch().then(
+      (url) => {
         if (!cancelled) {
           setSignedUrl(url)
-          setFailed(false)
+          setLoading(false)
         }
-      } catch {
+      },
+      () => {
         if (!cancelled) {
           setFailed(true)
+          setLoading(false)
         }
       }
-    }
-
-    void loadSignedUrl()
+    )
 
     return () => {
       cancelled = true
     }
-  }, [sourceId])
+  }, [doFetch])
 
   const handleLoadedMetadata = () => {
     if (mediaRef.current) {
@@ -65,6 +69,34 @@ export const InlineMediaPlayer = ({
     if (endSec !== undefined && mediaRef.current && mediaRef.current.currentTime >= endSec) {
       mediaRef.current.pause()
     }
+  }
+
+  const handleError = useCallback(() => {
+    if (retryCountRef.current === 0) {
+      retryCountRef.current = 1
+      setSignedUrl(null)
+      setLoading(true)
+      setFailed(false)
+      void doFetch().then(
+        (url) => {
+          setSignedUrl(url)
+          setLoading(false)
+        },
+        () => {
+          setFailed(true)
+          setLoading(false)
+        }
+      )
+    } else {
+      setFailed(true)
+      setLoading(false)
+    }
+  }, [doFetch])
+
+  if (loading) {
+    return (
+      <div className="mt-3 h-12 animate-pulse rounded border-0.5 border-black/10 bg-stone/50" />
+    )
   }
 
   if (failed || !src) {
@@ -83,7 +115,7 @@ export const InlineMediaPlayer = ({
           className="w-full"
           controls
           src={src}
-          onError={() => setFailed(true)}
+          onError={handleError}
           onLoadedMetadata={handleLoadedMetadata}
           onTimeUpdate={handleTimeUpdate}
         >
@@ -95,7 +127,7 @@ export const InlineMediaPlayer = ({
           className="w-full"
           controls
           src={src}
-          onError={() => setFailed(true)}
+          onError={handleError}
           onLoadedMetadata={handleLoadedMetadata}
           onTimeUpdate={handleTimeUpdate}
         >

@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Search, X } from 'lucide-react'
 import { SearchDropdown } from '@/components/search/SearchDropdown'
 import { ROUTES } from '@/constants/routes'
+import { useAuth } from '@/hooks/useAuth'
 import { useSearch } from '@/hooks/useSearch'
 import { flattenSearchResults } from '@/lib/searchResults'
 import { cn } from '@/lib/utils'
@@ -18,6 +19,7 @@ export const NavBar = ({ variant }: NavBarProps) => {
   const [searchOpen, setSearchOpen] = useState(false)
   const [activeIndex, setActiveIndex] = useState(0)
   const { error, isLoading, query, results, setQuery } = useSearch()
+  const { session } = useAuth()
   const isDark = variant === 'dark'
   const isGraphPage = location.pathname === ROUTES.GRAPH
   const dropdownItems = flattenSearchResults(results)
@@ -165,13 +167,15 @@ export const NavBar = ({ variant }: NavBarProps) => {
         >
           Sources
         </Link>
-        <Link
-          to={ROUTES.REGISTER}
-          className={isActive(ROUTES.REGISTER) ? activeLinkClass : navLinkClass}
-          onClick={closeSearch}
-        >
-          Register
-        </Link>
+        {!session ? (
+          <Link
+            to={ROUTES.REGISTER}
+            className={isActive(ROUTES.REGISTER) ? activeLinkClass : navLinkClass}
+            onClick={closeSearch}
+          >
+            Register
+          </Link>
+        ) : null}
         <div className="relative">
           <button
             className={cn(
