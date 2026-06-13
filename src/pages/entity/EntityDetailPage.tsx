@@ -17,8 +17,102 @@ import { getClaimsForEntity } from '@/lib/api/claims'
 import { getEntityBySlug, getEntityNeighborhood } from '@/lib/api/entities'
 import { getSourceEvidenceForClaims } from '@/lib/api/sources'
 import { truncateText } from '@/lib/format'
+import type { ClaimWithAuthor } from '@/lib/api/claims'
+import type { InterpretationFrame } from '@/types/domain'
 
 const relationshipLabel = (type: string) => type.replace(/_/g, ' ')
+
+const frameLabels: Record<InterpretationFrame, string> = {
+  canonical_rem: 'Canonical REM',
+  disputed_alternative: 'Disputed alternative',
+  external_academic: 'External academic',
+  historical_record: 'Historical record',
+  literary_artistic: 'Literary & artistic',
+  supporting_context: 'Supporting context',
+}
+
+const getEffectiveConfidence = (claim: ClaimWithAuthor) =>
+  claim.confidence_override ?? claim.confidence_score
+
+const claimSort = (firstClaim: ClaimWithAuthor, secondClaim: ClaimWithAuthor) => {
+  if (firstClaim.is_canonical !== secondClaim.is_canonical) {
+    return firstClaim.is_canonical ? -1 : 1
+  }
+
+  return getEffectiveConfidence(secondClaim) - getEffectiveConfidence(firstClaim)
+}
+
+const ClaimSection = ({
+  claims,
+  disputed = false,
+  heroFirst = false,
+  title,
+}: {
+  claims: ClaimWithAuthor[]
+  disputed?: boolean
+  heroFirst?: boolean
+  title: string
+}) => {
+  if (claims.length === 0) {
+    return null
+  }
+
+  return (
+    <section className="space-y-3">
+      <div>
+        <h3 className="font-display text-[10px] uppercase tracking-label text-ink">{title}</h3>
+        {disputed ? (
+          <p className="mt-1 font-body text-xs text-terracotta-dark">
+            These readings are marked as disputed by curators.
+          </p>
+        ) : null}
+      </div>
+      <div className="overflow-hidden rounded-lg border-0.5 border-black/10 bg-white">
+        {claims.map((claim, index) => {
+          const hero = heroFirst && index === 0 && claim.is_canonical
+
+          return (
+            <Link
+              key={claim.id}
+              to={`/claim/${claim.id}`}
+              className={`block border-b-0.5 border-black/[0.06] p-4 transition-colors last:border-b-0 hover:bg-stone/60 ${
+                hero ? 'border-l-4 border-l-verdigris bg-verdigris-light/40' : ''
+              }`}
+            >
+              <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                <div>
+                  <div className="mb-2 flex flex-wrap gap-2">
+                    {claim.is_canonical ? (
+                      <span className="rounded border border-amber-300 bg-amber-50 px-2 py-0.5 font-display text-[8px] uppercase tracking-badge text-amber-800">
+                        Canonical
+                      </span>
+                    ) : null}
+                    {claim.interpretation_frame ? (
+                      <span className="rounded border border-black/10 bg-stone px-2 py-0.5 font-display text-[8px] uppercase tracking-badge text-[#666]">
+                        {frameLabels[claim.interpretation_frame]}
+                      </span>
+                    ) : null}
+                  </div>
+                  <p
+                    className={`font-body leading-meta text-ink ${
+                      hero ? 'text-[15px]' : 'text-[13px]'
+                    }`}
+                  >
+                    {truncateText(claim.statement, hero ? 260 : 180)}
+                  </p>
+                  <p className="mt-1 font-body text-[11px] italic text-[#777]">
+                    {claim.profiles?.display_name ?? 'Unknown researcher'}
+                  </p>
+                </div>
+                <ConfidenceBadge score={getEffectiveConfidence(claim)} />
+              </div>
+            </Link>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
 
 export default function EntityDetailPage() {
   const { slug } = useParams()
@@ -39,14 +133,21 @@ export default function EntityDetailPage() {
 
   const claimsQuery = useQuery({
     queryKey: ['entity', entityQuery.data?.id, 'claims'],
-    queryFn: () => getClaimsForEntity(entityQuery.data?.id ?? ''),
+    queryFn: () => getClaimsForEntity(entityQuery.data?.id ?? '', { includeDisputed: true }),
     enabled: Boolean(entityQuery.data?.id),
     staleTime: 60_000,
   })
 
   const evidenceQuery = useQuery({
     queryKey: ['entity', entityQuery.data?.id, 'source-evidence'],
-    queryFn: () => getSourceEvidenceForClaims((claimsQuery.data ?? []).map((claim) => claim.id)),
+    queryFn: () => {
+      const claims = claimsQuery.data
+
+      return getSourceEvidenceForClaims([
+        ...(claims?.publishedClaims ?? []).map((claim) => claim.id),
+        ...(claims?.disputedClaims ?? []).map((claim) => claim.id),
+      ])
+    },
     enabled: Boolean(claimsQuery.data),
     staleTime: 60_000,
   })
@@ -85,6 +186,19 @@ export default function EntityDetailPage() {
     (connectedEntity) => connectedEntity.id !== entity.id
   )
   const relationships = neighborhoodQuery.data?.relationships ?? []
+  const publishedClaims = claimsQuery.data?.publishedClaims ?? []
+  const disputedClaims = claimsQuery.data?.disputedClaims ?? []
+  const coreClaims = publishedClaims
+    .filter((claim) => claim.is_canonical || claim.interpretation_frame === 'canonical_rem')
+    .sort(claimSort)
+  const coreClaimIds = new Set(coreClaims.map((claim) => claim.id))
+  const claimsByFrame = (frame: InterpretationFrame) =>
+    publishedClaims
+      .filter((claim) => !coreClaimIds.has(claim.id) && claim.interpretation_frame === frame)
+      .sort(claimSort)
+  const otherClaims = publishedClaims
+    .filter((claim) => !coreClaimIds.has(claim.id) && claim.interpretation_frame === null)
+    .sort(claimSort)
 
   return (
     <div className="mx-auto grid w-full max-w-6xl gap-8 px-5 py-8 lg:grid-cols-[minmax(0,720px)_174px]">
@@ -190,28 +304,27 @@ export default function EntityDetailPage() {
             Claims
           </h2>
           {claimsQuery.isLoading ? <Skeleton className="h-24 w-full" /> : null}
-          {(claimsQuery.data ?? []).length > 0 ? (
-            <div className="overflow-hidden rounded-lg border-0.5 border-black/10 bg-white">
-              {(claimsQuery.data ?? []).map((claim) => (
-                <Link
-                  key={claim.id}
-                  to={`/claim/${claim.id}`}
-                  className="grid gap-2 border-b-0.5 border-black/[0.06] p-4 transition-colors last:border-b-0 hover:bg-stone/60 sm:grid-cols-[1fr_auto]"
-                >
-                  <div>
-                    <p className="font-body text-[13px] leading-meta text-ink">
-                      {truncateText(claim.statement, 180)}
-                    </p>
-                    <p className="mt-1 font-body text-[11px] italic text-[#777]">
-                      {claim.profiles?.display_name ?? 'Unknown researcher'}
-                    </p>
-                  </div>
-                  <ConfidenceBadge score={claim.confidence_override ?? claim.confidence_score} />
-                </Link>
-              ))}
+          {publishedClaims.length > 0 || disputedClaims.length > 0 ? (
+            <div className="space-y-6">
+              <ClaimSection claims={coreClaims} heroFirst title="Core Interpretation" />
+              <ClaimSection
+                claims={claimsByFrame('supporting_context')}
+                title="Supporting Context"
+              />
+              <ClaimSection
+                claims={claimsByFrame('external_academic')}
+                title="External Academic Perspectives"
+              />
+              <ClaimSection claims={claimsByFrame('historical_record')} title="Historical Record" />
+              <ClaimSection
+                claims={claimsByFrame('literary_artistic')}
+                title="Literary & Artistic"
+              />
+              <ClaimSection claims={otherClaims} title="Other Claims" />
+              <ClaimSection claims={disputedClaims} disputed title="Disputed Readings" />
             </div>
           ) : null}
-          {!claimsQuery.isLoading && (claimsQuery.data ?? []).length === 0 ? (
+          {!claimsQuery.isLoading && publishedClaims.length === 0 && disputedClaims.length === 0 ? (
             <p className="font-body text-[12px] text-[#666]">
               No claims reference this entity yet.
             </p>

@@ -12,10 +12,12 @@ import {
   createAdminSource,
   deleteSourceFile,
   isAssemblyAiSourceFormat,
+  sourceCategories,
+  sourceCategoryLabels,
   triggerSourceTranscription,
   uploadSourceFile,
+  type SourceCategory,
   type SourceFormat,
-  type SourceTier,
   type SourceUploadProgress,
   type AdminSourceUrlDuplicate,
 } from '@/lib/api/admin'
@@ -40,18 +42,14 @@ const formatOptions: Array<{ label: string; value: SourceFormat }> = [
   { label: 'URL', value: 'url' },
 ]
 
-const tierOptions: Array<{ description: string; label: string; value: SourceTier }> = [
-  {
-    description: 'Primary or canonical material from the core research group.',
-    label: 'Tier 1',
-    value: 'primary',
-  },
-  {
-    description: 'Secondary, corroborating, or contextual material.',
-    label: 'Tier 2',
-    value: 'secondary',
-  },
-]
+const categoryDescriptions: Record<SourceCategory, string> = {
+  community_submitted: 'Submitted material that needs editorial review and context.',
+  external_academic: 'External academic scholarship or formal research.',
+  historical_record: 'Documented historical source, archive, or record.',
+  literary_artistic: 'Literary, artistic, symbolic, or cultural source material.',
+  primary_rem: 'Core REM group source material.',
+  secondary_rem: 'Adjacent or related REM material.',
+}
 
 const getErrorMessage = (error: unknown) => {
   if (error instanceof Error) {
@@ -95,7 +93,7 @@ export default function AdminSourceNewPage() {
   const [authorInput, setAuthorInput] = useState('')
   const [publicationDate, setPublicationDate] = useState('')
   const [format, setFormat] = useState<SourceFormat>('audio')
-  const [tier, setTier] = useState<SourceTier>('primary')
+  const [category, setCategory] = useState<SourceCategory>('primary_rem')
   const [uploadProgress, setUploadProgress] = useState<SourceUploadProgress | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [duplicateUrlSource, setDuplicateUrlSource] = useState<AdminSourceUrlDuplicate | null>(null)
@@ -252,7 +250,9 @@ export default function AdminSourceNewPage() {
 
     try {
       uploadedFilePath =
-        inputType === 'file' && file ? await uploadSourceFile(sourceId, file, setUploadProgress) : null
+        inputType === 'file' && file
+          ? await uploadSourceFile(sourceId, file, setUploadProgress)
+          : null
 
       const source = await createAdminSource({
         authors: nextAuthors,
@@ -261,7 +261,8 @@ export default function AdminSourceNewPage() {
         format,
         id: sourceId,
         publicationDate: publicationDate || null,
-        tier,
+        category,
+        tier: 'primary',
         title: title.trim(),
         url: inputType === 'url' ? normalizeSourceUrl(sourceUrl) : null,
       })
@@ -281,7 +282,7 @@ export default function AdminSourceNewPage() {
           'Text and document sources are saved for cataloging, but automatic document ingestion is not available yet.'
       } else {
         triggerWarning =
-          'URL sources are saved for cataloging, but automatic URL ingestion is not available yet.'
+          'URL sources are saved for cataloging. Add the domain to the URL allowlist before fetching.'
       }
 
       await queryClient.invalidateQueries({ queryKey: ['admin', 'sources'] })
@@ -289,7 +290,10 @@ export default function AdminSourceNewPage() {
       navigate(`/admin/sources/${source.id}`, {
         state:
           triggerError || triggerWarning
-            ? { triggerError: triggerError ?? undefined, triggerWarning: triggerWarning ?? undefined }
+            ? {
+                triggerError: triggerError ?? undefined,
+                triggerWarning: triggerWarning ?? undefined,
+              }
             : undefined,
       })
     } catch (submitError) {
@@ -603,33 +607,33 @@ export default function AdminSourceNewPage() {
 
               <aside className="space-y-4">
                 <div>
-                  <p className="mb-2 font-body text-xs text-[#777]">Tier</p>
+                  <p className="mb-2 font-body text-xs text-[#777]">Category</p>
                   <div className="space-y-2">
-                    {tierOptions.map((option) => (
+                    {sourceCategories.map((option) => (
                       <label
-                        key={option.value}
+                        key={option}
                         className={cn(
                           'flex cursor-pointer gap-3 rounded border border-0.5 p-3',
-                          tier === option.value
+                          category === option
                             ? 'border-verdigris bg-verdigris-light'
                             : 'border-black/[0.09] bg-stone/40'
                         )}
                       >
                         <input
-                          checked={tier === option.value}
+                          checked={category === option}
                           className="mt-1 accent-verdigris"
                           disabled={isSubmitting}
-                          name="tier"
+                          name="category"
                           type="radio"
-                          value={option.value}
-                          onChange={() => setTier(option.value)}
+                          value={option}
+                          onChange={() => setCategory(option)}
                         />
                         <span>
                           <span className="block font-display text-[10px] uppercase tracking-label text-ink">
-                            {option.label}
+                            {sourceCategoryLabels[option]}
                           </span>
                           <span className="mt-1 block font-body text-xs leading-meta text-[#777]">
-                            {option.description}
+                            {categoryDescriptions[option]}
                           </span>
                         </span>
                       </label>
