@@ -11,6 +11,7 @@ interface SpeakerTurn {
 interface TranscriptViewerProps {
   chunks: SourceChunkRow[]
   entities: EntityRow[]
+  showFairUseWarning?: boolean
   onSeek: (seconds: number) => void
 }
 
@@ -54,7 +55,12 @@ const getSpeakerTurns = (chunk: SourceChunkRow): SpeakerTurn[] => {
   return turns.length > 0 ? turns : [{ speaker: chunk.speaker, text: chunk.raw_text }]
 }
 
-export const TranscriptViewer = ({ chunks, entities, onSeek }: TranscriptViewerProps) => {
+export const TranscriptViewer = ({
+  chunks,
+  entities,
+  showFairUseWarning = false,
+  onSeek,
+}: TranscriptViewerProps) => {
   const navigate = useNavigate()
   const entityPattern = buildEntityPattern(entities)
 
@@ -67,7 +73,14 @@ export const TranscriptViewer = ({ chunks, entities, onSeek }: TranscriptViewerP
   }
 
   return (
-    <div className="rounded-lg border-0.5 border-black/10 bg-white">
+    <div className="overflow-hidden rounded-lg border-0.5 border-black/10 bg-white">
+      {showFairUseWarning ? (
+        <div className="border-b-0.5 border-amber-300/60 bg-amber-50 px-4 py-3">
+          <p className="font-body text-[12px] leading-meta text-amber-900">
+            This source uses a non-open license and has no fair-use rationale documented.
+          </p>
+        </div>
+      ) : null}
       {chunks.map((chunk) => {
         const timestamp = formatTimestamp(chunk.start_sec)
         const speakerTurns = getSpeakerTurns(chunk)
