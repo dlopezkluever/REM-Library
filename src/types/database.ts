@@ -213,7 +213,9 @@ export type Database = {
           date_sort_year: number | null
           description: string | null
           fts: unknown
+          hero_image_url: string | null
           id: string
+          image_url: string | null
           name: string
           position_x: number | null
           position_y: number | null
@@ -231,7 +233,9 @@ export type Database = {
           date_sort_year?: number | null
           description?: string | null
           fts?: unknown
+          hero_image_url?: string | null
           id?: string
+          image_url?: string | null
           name: string
           position_x?: number | null
           position_y?: number | null
@@ -249,7 +253,9 @@ export type Database = {
           date_sort_year?: number | null
           description?: string | null
           fts?: unknown
+          hero_image_url?: string | null
           id?: string
+          image_url?: string | null
           name?: string
           position_x?: number | null
           position_y?: number | null
@@ -599,6 +605,7 @@ export type Database = {
           created_at: string
           description: string | null
           duration_seconds: number | null
+          fair_use_rationale: string | null
           file_path: string | null
           format: Database['public']['Enums']['source_format']
           id: string
@@ -624,6 +631,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           duration_seconds?: number | null
+          fair_use_rationale?: string | null
           file_path?: string | null
           format: Database['public']['Enums']['source_format']
           id?: string
@@ -649,6 +657,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           duration_seconds?: number | null
+          fair_use_rationale?: string | null
           file_path?: string | null
           format?: Database['public']['Enums']['source_format']
           id?: string
@@ -667,6 +676,96 @@ export type Database = {
           url?: string | null
         }
         Relationships: []
+      }
+      suggestions: {
+        Row: {
+          admin_notes: string | null
+          created_at: string
+          created_claim_id: string | null
+          id: string
+          reason: string | null
+          rejection_reason: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: Database['public']['Enums']['suggestion_status']
+          submitter_id: string
+          suggestion_text: string
+          target_claim_id: string | null
+          target_entity_id: string | null
+          type: Database['public']['Enums']['suggestion_type']
+          updated_at: string
+        }
+        Insert: {
+          admin_notes?: string | null
+          created_at?: string
+          created_claim_id?: string | null
+          id?: string
+          reason?: string | null
+          rejection_reason?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: Database['public']['Enums']['suggestion_status']
+          submitter_id: string
+          suggestion_text: string
+          target_claim_id?: string | null
+          target_entity_id?: string | null
+          type: Database['public']['Enums']['suggestion_type']
+          updated_at?: string
+        }
+        Update: {
+          admin_notes?: string | null
+          created_at?: string
+          created_claim_id?: string | null
+          id?: string
+          reason?: string | null
+          rejection_reason?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: Database['public']['Enums']['suggestion_status']
+          submitter_id?: string
+          suggestion_text?: string
+          target_claim_id?: string | null
+          target_entity_id?: string | null
+          type?: Database['public']['Enums']['suggestion_type']
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'suggestions_created_claim_id_fkey'
+            columns: ['created_claim_id']
+            isOneToOne: false
+            referencedRelation: 'claims'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'suggestions_reviewed_by_fkey'
+            columns: ['reviewed_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'suggestions_submitter_id_fkey'
+            columns: ['submitter_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'suggestions_target_claim_id_fkey'
+            columns: ['target_claim_id']
+            isOneToOne: false
+            referencedRelation: 'claims'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'suggestions_target_entity_id_fkey'
+            columns: ['target_entity_id']
+            isOneToOne: false
+            referencedRelation: 'entities'
+            referencedColumns: ['id']
+          },
+        ]
       }
       url_ingestion_config: {
         Row: {
@@ -708,6 +807,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      approve_suggestion: {
+        Args: { admin_note?: string | null; suggestion_id: string }
+        Returns: Json
+      }
       get_admin_claims_page: {
         Args: {
           page_limit?: number
@@ -877,7 +980,7 @@ export type Database = {
       }
     }
     Enums: {
-      admin_role: 'super_admin' | 'editor' | 'viewer'
+      admin_role: 'super_admin' | 'editor' | 'viewer' | 'contributor'
       content_status: 'draft' | 'published' | 'archived' | 'disputed'
       entity_type: 'symbol' | 'figure' | 'narrative' | 'culture' | 'trope'
       extraction_status: 'pending' | 'confirmed' | 'edited' | 'rejected' | 'merged'
@@ -915,6 +1018,8 @@ export type Database = {
         | 'literary_artistic'
         | 'community_submitted'
       source_tier: 'primary' | 'secondary'
+      suggestion_status: 'pending' | 'approved' | 'rejected' | 'clarification_requested'
+      suggestion_type: 'new_claim' | 'claim_correction' | 'flag_entity' | 'flag_claim'
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1040,7 +1145,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      admin_role: ['super_admin', 'editor', 'viewer'],
+      admin_role: ['super_admin', 'editor', 'viewer', 'contributor'],
       content_status: ['draft', 'published', 'archived', 'disputed'],
       entity_type: ['symbol', 'figure', 'narrative', 'culture', 'trope'],
       extraction_status: ['pending', 'confirmed', 'edited', 'rejected', 'merged'],
@@ -1082,6 +1187,8 @@ export const Constants = {
       ],
       source_format: ['audio', 'video', 'text', 'book', 'url'],
       source_tier: ['primary', 'secondary'],
+      suggestion_status: ['pending', 'approved', 'rejected', 'clarification_requested'],
+      suggestion_type: ['new_claim', 'claim_correction', 'flag_entity', 'flag_claim'],
     },
   },
 } as const

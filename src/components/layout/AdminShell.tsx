@@ -8,6 +8,7 @@ import {
   GitPullRequestDraft,
   GitBranch,
   Globe,
+  Inbox,
   LogOut,
   ScrollText,
   Settings,
@@ -24,7 +25,9 @@ export const AdminShell = () => {
   const navItems = [
     { to: ROUTES.ADMIN_DASHBOARD, label: 'Dashboard', icon: BarChart3 },
     { to: ROUTES.ADMIN_SOURCES, label: 'Sources', icon: BookOpen },
+    { to: ROUTES.ADMIN_SOURCE_CRAWL, label: 'Crawl Site', icon: Globe },
     { to: ROUTES.ADMIN_REVIEW, label: 'Review Queue', icon: GitPullRequestDraft },
+    { to: ROUTES.ADMIN_SUGGESTIONS, label: 'Suggestions', icon: Inbox },
     { to: ROUTES.ADMIN_ENTITIES, label: 'Entities', icon: ScrollText },
     { to: ROUTES.ADMIN_CLAIMS, label: 'Claims', icon: FileText },
     { to: ROUTES.ADMIN_RELATIONSHIPS, label: 'Relationships', icon: GitBranch },

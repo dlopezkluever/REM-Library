@@ -7,9 +7,11 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  Image as ImageIcon,
   Plus,
   RefreshCw,
   Search,
+  Upload,
 } from 'lucide-react'
 import { ConfidenceOverrideInput } from '@/components/admin/ConfidenceOverrideInput'
 import { Badge } from '@/components/ui/badge'
@@ -32,8 +34,10 @@ import {
   publishAdminEntities,
   recomputeConfidenceInBatches,
   updateAdminEntityStatus,
+  updateEntityImages,
   updateEntityConfidenceOverride,
   updateEntityTimelineDates,
+  uploadEntityImage,
   type AdminEntityRow,
   type ContentStatus,
 } from '@/lib/api/admin'
@@ -120,6 +124,7 @@ export default function AdminEntityManagerPage() {
   })
 
   const [datesEntity, setDatesEntity] = useState<AdminEntityRow | null>(null)
+  const [imagesEntity, setImagesEntity] = useState<AdminEntityRow | null>(null)
 
   const entityPage = entitiesQuery.data
   const entities = entityPage?.entities ?? []
@@ -362,6 +367,16 @@ export default function AdminEntityManagerPage() {
                           Dates
                         </Button>
                       ) : null}
+                      <Button
+                        aria-label={`Edit images for ${entity.name}`}
+                        size="sm"
+                        type="button"
+                        variant="ghost"
+                        onClick={() => setImagesEntity(entity)}
+                      >
+                        <ImageIcon aria-hidden="true" className="h-3.5 w-3.5" />
+                        Images
+                      </Button>
                       {isDisputed ? (
                         <Button
                           disabled={updating}
@@ -456,9 +471,161 @@ export default function AdminEntityManagerPage() {
           ) : null}
         </DialogContent>
       </Dialog>
+
+      <Dialog
+        open={imagesEntity !== null}
+        onOpenChange={(open) => !open && setImagesEntity(null)}
+      >
+        <DialogContent>
+          {imagesEntity ? (
+            <EntityImagesEditor entity={imagesEntity} onClose={() => setImagesEntity(null)} />
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
+
+const EntityImagesEditor = ({
+  entity,
+  onClose,
+}: {
+  entity: AdminEntityRow
+  onClose: () => void
+}) => {
+  const queryClient = useQueryClient()
+  const [profileUrl, setProfileUrl] = useState(entity.image_url ?? '')
+  const [heroUrl, setHeroUrl] = useState(entity.hero_image_url ?? '')
+  const [message, setMessage] = useState<string | null>(null)
+
+  const saveMutation = useMutation({
+    mutationFn: () =>
+      updateEntityImages(entity.id, {
+        hero_image_url: heroUrl.trim() || null,
+        image_url: profileUrl.trim() || null,
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: adminEntitiesQueryKey })
+      await queryClient.invalidateQueries({ queryKey: ['entity', entity.slug] })
+      await queryClient.invalidateQueries({ queryKey: ['entities'] })
+      onClose()
+    },
+  })
+
+  const uploadMutation = useMutation({
+    mutationFn: ({ file, kind }: { file: File; kind: 'hero' | 'profile' }) =>
+      uploadEntityImage(entity.id, file, kind),
+    onSuccess: (url, variables) => {
+      if (variables.kind === 'profile') {
+        setProfileUrl(url)
+      } else {
+        setHeroUrl(url)
+      }
+
+      setMessage('Image uploaded. Save changes to apply it.')
+    },
+    onError: (error) => setMessage(getMutationError(error)),
+  })
+
+  const handleFile = (kind: 'hero' | 'profile', file: File | undefined) => {
+    if (!file) {
+      return
+    }
+
+    uploadMutation.mutate({ file, kind })
+  }
+
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>Entity images</DialogTitle>
+        <p className="font-body text-sm text-[#777]">{entity.name}</p>
+      </DialogHeader>
+
+      <div className="mt-4 space-y-5">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <ImageField
+            label="Profile image"
+            previewClassName="aspect-square"
+            url={profileUrl}
+            onClear={() => setProfileUrl('')}
+            onFile={(file) => handleFile('profile', file)}
+          />
+          <ImageField
+            label="Hero image"
+            previewClassName="aspect-[16/7]"
+            url={heroUrl}
+            onClear={() => setHeroUrl('')}
+            onFile={(file) => handleFile('hero', file)}
+          />
+        </div>
+
+        {message ? <p className="font-body text-sm text-[#777]">{message}</p> : null}
+        {saveMutation.error ? (
+          <p className="font-body text-sm text-terracotta-dark">
+            {getMutationError(saveMutation.error)}
+          </p>
+        ) : null}
+
+        <div className="flex justify-end gap-2">
+          <Button size="sm" type="button" variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button disabled={saveMutation.isPending || uploadMutation.isPending} size="sm" type="button" onClick={() => saveMutation.mutate()}>
+            Save images
+          </Button>
+        </div>
+      </div>
+    </>
+  )
+}
+
+const ImageField = ({
+  label,
+  previewClassName,
+  url,
+  onClear,
+  onFile,
+}: {
+  label: string
+  previewClassName: string
+  url: string
+  onClear: () => void
+  onFile: (file: File | undefined) => void
+}) => (
+  <div>
+    <p className="mb-2 font-display text-[9px] uppercase tracking-label text-[#777]">{label}</p>
+    <div
+      className={cn(
+        'mb-3 overflow-hidden rounded border border-0.5 border-black/10 bg-stone',
+        previewClassName
+      )}
+    >
+      {url ? (
+        <img alt="" className="h-full w-full object-cover" src={url} />
+      ) : (
+        <div className="flex h-full items-center justify-center font-body text-xs text-[#888]">
+          No image
+        </div>
+      )}
+    </div>
+    <label className="inline-flex cursor-pointer items-center gap-2 rounded border border-0.5 border-black/15 bg-white px-3 py-2 font-body text-xs text-ink hover:bg-stone">
+      <Upload aria-hidden="true" className="h-3.5 w-3.5" />
+      Upload
+      <input
+        accept="image/*"
+        className="sr-only"
+        type="file"
+        onChange={(event) => onFile(event.target.files?.[0])}
+      />
+    </label>
+    {url ? (
+      <Button className="ml-2" size="sm" type="button" variant="ghost" onClick={onClear}>
+        Remove
+      </Button>
+    ) : null}
+  </div>
+)
 
 const TimelineDatesEditor = ({
   entity,

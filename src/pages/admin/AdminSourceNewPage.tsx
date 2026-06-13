@@ -282,7 +282,7 @@ export default function AdminSourceNewPage() {
           'Text and document sources are saved for cataloging, but automatic document ingestion is not available yet.'
       } else {
         triggerWarning =
-          'URL sources are saved for cataloging. Add the domain to the URL allowlist before fetching.'
+          'URL source saved. Add the domain to the URL allowlist, then fetch it from the source detail page.'
       }
 
       await queryClient.invalidateQueries({ queryKey: ['admin', 'sources'] })
@@ -499,8 +499,7 @@ export default function AdminSourceNewPage() {
                       </p>
                     ) : null}
                     <p className="mt-2 font-body text-xs text-[#777]">
-                      URL sources are saved now. Automatic URL ingestion will be enabled after the
-                      URL pipeline is defined.
+                      URL sources can be fetched after their domain is allowlisted.
                     </p>
                   </label>
                 )}

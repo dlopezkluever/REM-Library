@@ -1,5 +1,7 @@
+import { useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
+import { Play } from 'lucide-react'
 import { MarkdownProse } from '@/components/content/MarkdownProse'
 import { AttestationBar } from '@/components/entity/AttestationBar'
 import { ConfidenceBadge } from '@/components/entity/ConfidenceBadge'
@@ -7,15 +9,18 @@ import { EntityBadge } from '@/components/entity/EntityBadge'
 import { EntityChip } from '@/components/entity/EntityChip'
 import { MiniGraph } from '@/components/entity/MiniGraph'
 import { SourceAnchorRow } from '@/components/source/SourceAnchorRow'
+import { InlineMediaPlayer } from '@/components/source/InlineMediaPlayer'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Button } from '@/components/ui/button'
 import { CompareButton } from '@/components/compare/CompareButton'
 import { ExportDialog } from '@/components/export/ExportDialog'
 import { CopyLinkButton } from '@/components/common/CopyLinkButton'
+import { SuggestionDialog } from '@/components/suggestions/SuggestionDialog'
 import { buildEntityExport } from '@/lib/export'
 import { ENTITY_LABELS } from '@/constants/entityTypes'
 import { getClaimsForEntity } from '@/lib/api/claims'
 import { getEntityBySlug, getEntityNeighborhood } from '@/lib/api/entities'
-import { getSourceEvidenceForClaims } from '@/lib/api/sources'
+import { getSourceEvidenceForClaims, type SourceAnchorEvidence } from '@/lib/api/sources'
 import { truncateText } from '@/lib/format'
 import type { ClaimWithAuthor } from '@/lib/api/claims'
 import type { InterpretationFrame } from '@/types/domain'
@@ -46,15 +51,19 @@ const ClaimSection = ({
   claims,
   collapsible = false,
   disputed = false,
+  evidenceByClaimId,
   heroFirst = false,
   title,
 }: {
   claims: ClaimWithAuthor[]
   collapsible?: boolean
   disputed?: boolean
+  evidenceByClaimId: Map<string, SourceAnchorEvidence[]>
   heroFirst?: boolean
   title: string
 }) => {
+  const [openMediaClaimId, setOpenMediaClaimId] = useState<string | null>(null)
+
   if (claims.length === 0) {
     return null
   }
@@ -74,16 +83,22 @@ const ClaimSection = ({
     <div className="overflow-hidden rounded-lg border-0.5 border-black/10 bg-white">
       {claims.map((claim, index) => {
         const hero = heroFirst && index === 0 && claim.is_canonical
+        const mediaEvidence = evidenceByClaimId
+          .get(claim.id)
+          ?.find(
+            (item) =>
+              item.anchor.start_timestamp_sec !== null &&
+              (item.source.format === 'audio' || item.source.format === 'video')
+          )
 
         return (
-          <Link
+          <div
             key={claim.id}
-            to={`/claim/${claim.id}`}
-            className={`block border-b-0.5 border-black/[0.06] p-4 transition-colors last:border-b-0 hover:bg-stone/60 ${
+            className={`border-b-0.5 border-black/[0.06] p-4 transition-colors last:border-b-0 hover:bg-stone/60 ${
               hero ? 'border-l-4 border-l-verdigris bg-verdigris-light/40' : ''
             }`}
           >
-            <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+            <Link className="grid gap-2 sm:grid-cols-[1fr_auto]" to={`/claim/${claim.id}`}>
               <div>
                 <div className="mb-2 flex flex-wrap gap-2">
                   {claim.is_canonical ? (
@@ -109,8 +124,31 @@ const ClaimSection = ({
                 </p>
               </div>
               <ConfidenceBadge score={getEffectiveConfidence(claim)} />
-            </div>
-          </Link>
+            </Link>
+            {mediaEvidence && mediaEvidence.anchor.start_timestamp_sec !== null ? (
+              <div className="mt-3">
+                <button
+                  className="inline-flex items-center gap-1.5 font-body text-[11px] text-verdigris hover:text-verdigris-dark"
+                  type="button"
+                  onClick={() =>
+                    setOpenMediaClaimId((current) => (current === claim.id ? null : claim.id))
+                  }
+                >
+                  <Play aria-hidden="true" className="h-3 w-3" />
+                  {openMediaClaimId === claim.id ? 'Hide source clip' : 'Listen to source'}
+                </button>
+                {openMediaClaimId === claim.id ? (
+                  <InlineMediaPlayer
+                    endSec={mediaEvidence.anchor.end_timestamp_sec ?? undefined}
+                    format={mediaEvidence.source.format as 'audio' | 'video'}
+                    label={`Source: ${mediaEvidence.source.title}`}
+                    sourceId={mediaEvidence.source.id}
+                    startSec={mediaEvidence.anchor.start_timestamp_sec}
+                  />
+                ) : null}
+              </div>
+            ) : null}
+          </div>
         )
       })}
     </div>
@@ -147,6 +185,8 @@ const ClaimSection = ({
 
 export default function EntityDetailPage() {
   const { slug } = useParams()
+  const [suggestionOpen, setSuggestionOpen] = useState(false)
+  const [flagEntityOpen, setFlagEntityOpen] = useState(false)
 
   const entityQuery = useQuery({
     queryKey: ['entity', slug],
@@ -183,6 +223,19 @@ export default function EntityDetailPage() {
     staleTime: 60_000,
   })
 
+  const evidence = useMemo(() => evidenceQuery.data ?? [], [evidenceQuery.data])
+  const evidenceByClaimId = useMemo(() => {
+    const grouped = new Map<string, SourceAnchorEvidence[]>()
+
+    evidence.forEach((item) => {
+      const items = grouped.get(item.claimId) ?? []
+      items.push(item)
+      grouped.set(item.claimId, items)
+    })
+
+    return grouped
+  }, [evidence])
+
   if (entityQuery.isLoading) {
     return (
       <div className="mx-auto grid w-full max-w-6xl gap-8 px-5 py-8 lg:grid-cols-[minmax(0,720px)_174px]">
@@ -211,7 +264,6 @@ export default function EntityDetailPage() {
 
   const entity = entityQuery.data
   const confidence = entity.confidence_override ?? entity.confidence_score
-  const evidence = evidenceQuery.data ?? []
   const sourceCount = new Set(evidence.map((item) => item.source.id)).size
   const connectedEntities = (neighborhoodQuery.data?.entities ?? []).filter(
     (connectedEntity) => connectedEntity.id !== entity.id
@@ -234,6 +286,11 @@ export default function EntityDetailPage() {
   return (
     <div className="mx-auto grid w-full max-w-6xl gap-8 px-5 py-8 lg:grid-cols-[minmax(0,720px)_174px]">
       <article>
+        {entity.hero_image_url ? (
+          <div className="mb-6 aspect-[16/6] overflow-hidden rounded border-0.5 border-black/10 bg-white">
+            <img alt="" className="h-full w-full object-cover" src={entity.hero_image_url} />
+          </div>
+        ) : null}
         <nav className="mb-6 font-body text-[11px] text-[#777]">
           <Link className="hover:text-ink" to="/encyclopedia">
             Encyclopedia
@@ -246,8 +303,19 @@ export default function EntityDetailPage() {
 
         <header className="border-b-0.5 border-black/10 pb-6">
           <div className="mb-3 flex flex-wrap items-center gap-3">
-            <h1 className="font-display text-[28px] leading-tight text-ink">{entity.name}</h1>
-            <EntityBadge type={entity.type} />
+            {entity.image_url ? (
+              <img
+                alt=""
+                className="h-16 w-16 rounded border-0.5 border-black/10 object-cover"
+                src={entity.image_url}
+              />
+            ) : null}
+            <div className="min-w-0">
+              <h1 className="font-display text-[28px] leading-tight text-ink">{entity.name}</h1>
+              <div className="mt-2">
+                <EntityBadge type={entity.type} />
+              </div>
+            </div>
           </div>
           {entity.aliases.length > 0 ? (
             <p className="font-body text-[12px] italic text-[#666]">
@@ -287,6 +355,12 @@ export default function EntityDetailPage() {
               }
             />
             <CopyLinkButton />
+            <Button size="sm" type="button" variant="outline" onClick={() => setSuggestionOpen(true)}>
+              Suggest a claim
+            </Button>
+            <Button size="sm" type="button" variant="ghost" onClick={() => setFlagEntityOpen(true)}>
+              Flag this entity
+            </Button>
           </div>
         </header>
 
@@ -337,27 +411,50 @@ export default function EntityDetailPage() {
           {claimsQuery.isLoading ? <Skeleton className="h-24 w-full" /> : null}
           {publishedClaims.length > 0 || disputedClaims.length > 0 ? (
             <div className="space-y-6">
-              <ClaimSection claims={coreClaims} heroFirst title="Core Interpretation" />
+              <ClaimSection
+                claims={coreClaims}
+                evidenceByClaimId={evidenceByClaimId}
+                heroFirst
+                title="Core Interpretation"
+              />
               <ClaimSection
                 claims={claimsByFrame('supporting_context')}
+                evidenceByClaimId={evidenceByClaimId}
                 title="Supporting Context"
               />
               <ClaimSection
                 claims={claimsByFrame('external_academic')}
+                evidenceByClaimId={evidenceByClaimId}
                 title="External Academic Perspectives"
               />
-              <ClaimSection claims={claimsByFrame('historical_record')} title="Historical Record" />
+              <ClaimSection
+                claims={claimsByFrame('historical_record')}
+                evidenceByClaimId={evidenceByClaimId}
+                title="Historical Record"
+              />
               <ClaimSection
                 claims={claimsByFrame('literary_artistic')}
+                evidenceByClaimId={evidenceByClaimId}
                 title="Literary & Artistic"
               />
               <ClaimSection
                 claims={claimsByFrame('disputed_alternative')}
                 disputed
+                evidenceByClaimId={evidenceByClaimId}
                 title="Disputed Alternative Readings"
               />
-              <ClaimSection claims={otherClaims} collapsible title="Other Claims" />
-              <ClaimSection claims={disputedClaims} disputed title="Disputed Readings" />
+              <ClaimSection
+                claims={otherClaims}
+                collapsible
+                evidenceByClaimId={evidenceByClaimId}
+                title="Other Claims"
+              />
+              <ClaimSection
+                claims={disputedClaims}
+                disputed
+                evidenceByClaimId={evidenceByClaimId}
+                title="Disputed Readings"
+              />
             </div>
           ) : null}
           {!claimsQuery.isLoading && publishedClaims.length === 0 && disputedClaims.length === 0 ? (
@@ -393,6 +490,25 @@ export default function EntityDetailPage() {
           <MiniGraph entityId={entity.id} />
         </div>
       </aside>
+      <SuggestionDialog
+        open={suggestionOpen}
+        suggestionLabel="Proposed claim"
+        targetEntityId={entity.id}
+        targetLabel={entity.name}
+        title="Suggest a claim"
+        type="new_claim"
+        onOpenChange={setSuggestionOpen}
+      />
+      <SuggestionDialog
+        open={flagEntityOpen}
+        reasonLabel="Reason for flagging"
+        suggestionLabel="What is incorrect or disputed?"
+        targetEntityId={entity.id}
+        targetLabel={entity.name}
+        title="Flag this entity"
+        type="flag_entity"
+        onOpenChange={setFlagEntityOpen}
+      />
     </div>
   )
 }

@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useAuth } from '@/hooks/useAuth'
 import { getAdminRedirectDestination } from '@/lib/adminRedirect'
+import { ROUTES } from '@/constants/routes'
 
 export default function AdminLoginPage() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { session, signIn } = useAuth()
+  const { session, role, isLoading, signIn } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -17,10 +18,12 @@ export default function AdminLoginPage() {
   const redirectDestination = getAdminRedirectDestination(location.state)
 
   useEffect(() => {
-    if (session) {
-      navigate(redirectDestination, { replace: true })
+    if (session && !isLoading) {
+      // Contributors have no admin pages — send them to the public graph.
+      const destination = role === 'contributor' ? ROUTES.GRAPH : redirectDestination
+      navigate(destination, { replace: true })
     }
-  }, [navigate, redirectDestination, session])
+  }, [navigate, redirectDestination, role, isLoading, session])
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -29,7 +32,7 @@ export default function AdminLoginPage() {
 
     try {
       await signIn(email, password)
-      navigate(redirectDestination, { replace: true })
+      // Navigation is handled by the useEffect watching session + role.
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Unable to sign in.')
     } finally {
@@ -83,6 +86,9 @@ export default function AdminLoginPage() {
         <Button className="mt-6 w-full" disabled={isSubmitting} type="submit">
           {isSubmitting ? 'Signing in' : 'Sign in'}
         </Button>
+        <Link className="mt-4 block text-center font-body text-xs text-verdigris" to={ROUTES.REGISTER}>
+          Create contributor account
+        </Link>
       </form>
     </div>
   )

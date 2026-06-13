@@ -74,6 +74,7 @@ export default function AdminSourceDetailPage() {
   const [license, setLicense] = useState('')
   const [rightsNotes, setRightsNotes] = useState('')
   const [attribution, setAttribution] = useState('')
+  const [fairUseRationale, setFairUseRationale] = useState('')
   const [recomputeDialogOpen, setRecomputeDialogOpen] = useState(false)
   const [impactedEntityIds, setImpactedEntityIds] = useState<string[]>([])
 
@@ -208,6 +209,7 @@ export default function AdminSourceDetailPage() {
 
       return updateSourceRightsMetadata(source.id, {
         attribution: attribution.trim() || null,
+        fair_use_rationale: fairUseRationale.trim() || null,
         license: license.trim() || null,
         rights_notes: rightsNotes.trim() || null,
       })
@@ -273,6 +275,7 @@ export default function AdminSourceDetailPage() {
     setLicense(source.license ?? '')
     setRightsNotes(source.rights_notes ?? '')
     setAttribution(source.attribution ?? '')
+    setFairUseRationale(source.fair_use_rationale ?? '')
     /* eslint-enable react-hooks/set-state-in-effect */
   }, [source])
 
@@ -508,25 +511,44 @@ export default function AdminSourceDetailPage() {
                   label="Rights Metadata"
                   value={
                     <div className="space-y-3">
-                      <Input
-                        aria-label="License"
-                        placeholder="License"
-                        value={license}
-                        onChange={(event) => setLicense(event.target.value)}
-                      />
-                      <Input
-                        aria-label="Attribution"
-                        placeholder="Attribution"
-                        value={attribution}
-                        onChange={(event) => setAttribution(event.target.value)}
-                      />
-                      <textarea
-                        aria-label="Rights notes"
-                        className="min-h-20 w-full rounded border border-0.5 border-black/15 bg-stone px-3 py-2 font-body text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-verdigris"
-                        placeholder="Rights notes"
-                        value={rightsNotes}
-                        onChange={(event) => setRightsNotes(event.target.value)}
-                      />
+                      <label className="block">
+                        <span className="mb-1 block font-body text-xs text-[#777]">License</span>
+                        <Input
+                          aria-label="License"
+                          placeholder="e.g. CC BY 4.0"
+                          value={license}
+                          onChange={(event) => setLicense(event.target.value)}
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="mb-1 block font-body text-xs text-[#777]">Attribution</span>
+                        <Input
+                          aria-label="Attribution"
+                          placeholder="e.g. © 2024 Author Name"
+                          value={attribution}
+                          onChange={(event) => setAttribution(event.target.value)}
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="mb-1 block font-body text-xs text-[#777]">Rights notes</span>
+                        <textarea
+                          aria-label="Rights notes"
+                          className="min-h-20 w-full rounded border border-0.5 border-black/15 bg-stone px-3 py-2 font-body text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-verdigris"
+                          placeholder="Any additional rights information"
+                          value={rightsNotes}
+                          onChange={(event) => setRightsNotes(event.target.value)}
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="mb-1 block font-body text-xs text-[#777]">Fair use rationale</span>
+                        <textarea
+                          aria-label="Fair use rationale"
+                          className="min-h-20 w-full rounded border border-0.5 border-black/15 bg-stone px-3 py-2 font-body text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-verdigris"
+                          placeholder="Explain why this use is fair use"
+                          value={fairUseRationale}
+                          onChange={(event) => setFairUseRationale(event.target.value)}
+                        />
+                      </label>
                       <div className="flex items-center gap-3">
                         <Button
                           disabled={rightsMutation.isPending}

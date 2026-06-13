@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Play } from 'lucide-react'
@@ -6,8 +7,11 @@ import { MarkdownProse } from '@/components/content/MarkdownProse'
 import { ConfidenceBadge } from '@/components/entity/ConfidenceBadge'
 import { EntityChip } from '@/components/entity/EntityChip'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Button } from '@/components/ui/button'
 import { ExportDialog } from '@/components/export/ExportDialog'
 import { CopyLinkButton } from '@/components/common/CopyLinkButton'
+import { InlineMediaPlayer } from '@/components/source/InlineMediaPlayer'
+import { SuggestionDialog } from '@/components/suggestions/SuggestionDialog'
 import { buildClaimExport } from '@/lib/export'
 import { getClaimById, getEntitiesForClaim } from '@/lib/api/claims'
 import { getSourceEvidenceForClaim } from '@/lib/api/sources'
@@ -35,6 +39,9 @@ const StatusBadge = ({ status }: { status: ContentStatus }) => (
 
 export default function ClaimDetailPage() {
   const { id } = useParams()
+  const [openMediaAnchorId, setOpenMediaAnchorId] = useState<string | null>(null)
+  const [suggestionOpen, setSuggestionOpen] = useState(false)
+  const [flagClaimOpen, setFlagClaimOpen] = useState(false)
 
   const claimQuery = useQuery({
     queryKey: ['claim', id],
@@ -124,6 +131,12 @@ export default function ClaimDetailPage() {
               }
             />
             <CopyLinkButton />
+            <Button size="sm" type="button" variant="outline" onClick={() => setSuggestionOpen(true)}>
+              Suggest a correction
+            </Button>
+            <Button size="sm" type="button" variant="ghost" onClick={() => setFlagClaimOpen(true)}>
+              Flag this claim
+            </Button>
           </div>
         </header>
 
@@ -196,13 +209,39 @@ export default function ClaimDetailPage() {
                         {item.anchor.transcript_excerpt}
                       </p>
                     ) : null}
-                    {timestamp && ['audio', 'video'].includes(item.source.format) ? (
+                    {timestamp &&
+                    item.anchor.start_timestamp_sec !== null &&
+                    (item.source.format === 'audio' || item.source.format === 'video') ? (
+                      <div className="mt-3">
+                        <button
+                          className="inline-flex items-center gap-1.5 font-body text-[11px] text-verdigris hover:text-verdigris-dark"
+                          type="button"
+                          onClick={() =>
+                            setOpenMediaAnchorId((current) =>
+                              current === item.anchor.id ? null : item.anchor.id
+                            )
+                          }
+                        >
+                          <Play className="h-3 w-3" />
+                          {openMediaAnchorId === item.anchor.id ? 'Hide source clip' : `Play from ${timestamp}`}
+                        </button>
+                        {openMediaAnchorId === item.anchor.id ? (
+                          <InlineMediaPlayer
+                            endSec={item.anchor.end_timestamp_sec ?? undefined}
+                            format={item.source.format}
+                            label={`Source: ${item.source.title}, ${timestamp}`}
+                            sourceId={item.source.id}
+                            startSec={item.anchor.start_timestamp_sec}
+                          />
+                        ) : null}
+                      </div>
+                    ) : timestamp ? (
                       <Link
                         className="mt-3 inline-flex items-center gap-1.5 font-body text-[11px] text-verdigris hover:text-verdigris-dark"
                         to={sourceUrl}
                       >
                         <Play className="h-3 w-3" />
-                        Play from {timestamp}
+                        Open source at {timestamp}
                       </Link>
                     ) : null}
                   </div>
@@ -226,6 +265,26 @@ export default function ClaimDetailPage() {
           <ConfidenceBreakdown evidence={evidence} score={confidence} />
         </div>
       </aside>
+      <SuggestionDialog
+        open={suggestionOpen}
+        reasonLabel="Reason"
+        suggestionLabel="Corrected claim"
+        targetClaimId={claim.id}
+        targetLabel={claim.statement}
+        title="Suggest a correction"
+        type="claim_correction"
+        onOpenChange={setSuggestionOpen}
+      />
+      <SuggestionDialog
+        open={flagClaimOpen}
+        reasonLabel="Reason for flagging"
+        suggestionLabel="What is incorrect or disputed?"
+        targetClaimId={claim.id}
+        targetLabel={claim.statement}
+        title="Flag this claim"
+        type="flag_claim"
+        onOpenChange={setFlagClaimOpen}
+      />
     </div>
   )
 }

@@ -26,6 +26,11 @@ export const SourceAnchorRow = ({ evidence }: SourceAnchorRowProps) => {
         <p className="font-body text-[12px] font-semibold text-ink">{evidence.source.title}</p>
         <span className="shrink-0 font-body text-[10px] text-[#777]">{citation}</span>
       </div>
+      {evidence.source.attribution ? (
+        <p className="mt-1 font-body text-[10px] leading-meta text-[#777]">
+          {evidence.source.attribution}
+        </p>
+      ) : null}
       {evidence.anchor.transcript_excerpt ? (
         <p className="mt-2 font-body text-[11px] italic leading-meta text-[#666]">
           {evidence.anchor.transcript_excerpt}
