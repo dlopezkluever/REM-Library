@@ -11,6 +11,7 @@ import {
 } from '@/components/admin/sourceDisplay'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import {
   Dialog,
   DialogClose,
@@ -28,9 +29,15 @@ import {
   recomputeConfidenceInBatches,
   rerunSourcePipelineStage,
   restoreAdminSource,
+  sourceCategories,
+  sourceCategoryLabels,
   subscribeToSourceUpdates,
+  triggerUrlFetch,
   updateAdminSourceStatus,
+  updateSourceCategory,
+  updateSourceRightsMetadata,
   updateSourceTier,
+  type SourceCategory,
   type SourceTier,
 } from '@/lib/api/admin'
 import { cn } from '@/lib/utils'
@@ -63,6 +70,10 @@ export default function AdminSourceDetailPage() {
   )
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false)
   const [tierMessage, setTierMessage] = useState<string | null>(null)
+  const [rightsMessage, setRightsMessage] = useState<string | null>(null)
+  const [license, setLicense] = useState('')
+  const [rightsNotes, setRightsNotes] = useState('')
+  const [attribution, setAttribution] = useState('')
   const [recomputeDialogOpen, setRecomputeDialogOpen] = useState(false)
   const [impactedEntityIds, setImpactedEntityIds] = useState<string[]>([])
 
@@ -71,6 +82,7 @@ export default function AdminSourceDetailPage() {
     queryKey: sourceQueryKey,
     queryFn: () => getAdminSourceById(id ?? ''),
   })
+  const source = sourceQuery.data
 
   const archiveMutation = useMutation({
     mutationFn: archiveAdminSource,
@@ -157,6 +169,73 @@ export default function AdminSourceDetailPage() {
     },
   })
 
+  const categoryMutation = useMutation({
+    mutationFn: async (category: SourceCategory) => {
+      if (!source) {
+        throw new Error('Source is not loaded yet.')
+      }
+
+      const updatedSource = await updateSourceCategory(source.id, category)
+      const affectedEntityIds = await getSourceAffectedEntityIds(source.id)
+
+      return {
+        impactedEntityIds: affectedEntityIds,
+        source: updatedSource,
+      }
+    },
+    onMutate: () => {
+      setTierMessage(null)
+    },
+    onSuccess: async (result) => {
+      queryClient.setQueryData(sourceQueryKey, result.source)
+      setImpactedEntityIds(result.impactedEntityIds)
+      setTierMessage('Source category updated.')
+      setRecomputeDialogOpen(true)
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'source-list'] })
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'sources'] })
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'source-impact', source?.id] })
+    },
+    onError: (error) => {
+      setTierMessage(getErrorMessage(error))
+    },
+  })
+
+  const rightsMutation = useMutation({
+    mutationFn: () => {
+      if (!source) {
+        throw new Error('Source is not loaded yet.')
+      }
+
+      return updateSourceRightsMetadata(source.id, {
+        attribution: attribution.trim() || null,
+        license: license.trim() || null,
+        rights_notes: rightsNotes.trim() || null,
+      })
+    },
+    onMutate: () => setRightsMessage(null),
+    onSuccess: async (updatedSource) => {
+      queryClient.setQueryData(sourceQueryKey, updatedSource)
+      setRightsMessage('Rights metadata saved.')
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'source-list'] })
+    },
+    onError: (error) => setRightsMessage(getErrorMessage(error)),
+  })
+
+  const urlFetchMutation = useMutation({
+    mutationFn: () => {
+      if (!source) {
+        throw new Error('Source is not loaded yet.')
+      }
+
+      return triggerUrlFetch(source.id)
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: sourceQueryKey })
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'source-list'] })
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'sources'] })
+    },
+  })
+
   const recomputeMutation = useMutation({
     mutationFn: async (entityIds: string[]) => {
       await recomputeConfidenceInBatches(entityIds)
@@ -185,7 +264,16 @@ export default function AdminSourceDetailPage() {
     })
   }, [id, queryClient, sourceQueryKey])
 
-  const source = sourceQuery.data
+  useEffect(() => {
+    if (!source) {
+      return
+    }
+
+    setLicense(source.license ?? '')
+    setRightsNotes(source.rights_notes ?? '')
+    setAttribution(source.attribution ?? '')
+  }, [source])
+
   const currentStage = source
     ? (failedStageMap[source.pipeline_stage] ?? source.pipeline_stage)
     : null
@@ -196,6 +284,9 @@ export default function AdminSourceDetailPage() {
     restoreMutation.error ??
     statusMutation.error ??
     tierMutation.error ??
+    categoryMutation.error ??
+    rightsMutation.error ??
+    urlFetchMutation.error ??
     recomputeMutation.error
   const rerunAction = source ? getPipelineRerunAction(source.pipeline_stage, source) : null
 
@@ -337,6 +428,36 @@ export default function AdminSourceDetailPage() {
                 />
                 <MetadataRow label="Format" value={formatLabels[source.format]} />
                 <MetadataRow
+                  label="Category"
+                  value={
+                    <div className="space-y-2">
+                      <select
+                        aria-label="Source category"
+                        className="h-9 w-full max-w-[260px] rounded border border-0.5 border-black/15 bg-stone px-3 font-body text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-verdigris disabled:opacity-60"
+                        disabled={categoryMutation.isPending}
+                        value={source.category ?? ''}
+                        onChange={(event) => {
+                          const nextCategory = event.target.value as SourceCategory
+
+                          if (nextCategory && nextCategory !== source.category) {
+                            categoryMutation.mutate(nextCategory)
+                          }
+                        }}
+                      >
+                        <option value="">No category</option>
+                        {sourceCategories.map((category) => (
+                          <option key={category} value={category}>
+                            {sourceCategoryLabels[category]}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="font-body text-xs text-[#777]">
+                        Legacy tier is derived for confidence scoring.
+                      </p>
+                    </div>
+                  }
+                />
+                <MetadataRow
                   label="Tier"
                   value={
                     <div className="space-y-2">
@@ -375,6 +496,61 @@ export default function AdminSourceDetailPage() {
                   }
                 />
                 <MetadataRow label="Status" value={source.status} />
+                <MetadataRow
+                  label="Crawl Date"
+                  value={
+                    source.crawl_date ? new Date(source.crawl_date).toLocaleString() : 'Not crawled'
+                  }
+                />
+                <MetadataRow
+                  label="Rights Metadata"
+                  value={
+                    <div className="space-y-3">
+                      <Input
+                        aria-label="License"
+                        placeholder="License"
+                        value={license}
+                        onChange={(event) => setLicense(event.target.value)}
+                      />
+                      <Input
+                        aria-label="Attribution"
+                        placeholder="Attribution"
+                        value={attribution}
+                        onChange={(event) => setAttribution(event.target.value)}
+                      />
+                      <textarea
+                        aria-label="Rights notes"
+                        className="min-h-20 w-full rounded border border-0.5 border-black/15 bg-stone px-3 py-2 font-body text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-verdigris"
+                        placeholder="Rights notes"
+                        value={rightsNotes}
+                        onChange={(event) => setRightsNotes(event.target.value)}
+                      />
+                      <div className="flex items-center gap-3">
+                        <Button
+                          disabled={rightsMutation.isPending}
+                          size="sm"
+                          type="button"
+                          variant="outline"
+                          onClick={() => rightsMutation.mutate()}
+                        >
+                          Save rights
+                        </Button>
+                        {rightsMessage ? (
+                          <span
+                            className={cn(
+                              'font-body text-xs',
+                              rightsMutation.isError
+                                ? 'text-terracotta-dark'
+                                : 'text-verdigris-dark'
+                            )}
+                          >
+                            {rightsMessage}
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                  }
+                />
                 <MetadataRow
                   label="Location"
                   value={
@@ -416,6 +592,21 @@ export default function AdminSourceDetailPage() {
                   />
                   {rerunAction?.label ?? 'Re-run'}
                 </Button>
+                {source.format === 'url' && source.pipeline_stage === 'uploaded' ? (
+                  <Button
+                    className="w-full"
+                    disabled={urlFetchMutation.isPending}
+                    type="button"
+                    variant="outline"
+                    onClick={() => urlFetchMutation.mutate()}
+                  >
+                    <RefreshCw
+                      aria-hidden="true"
+                      className={cn('h-4 w-4', urlFetchMutation.isPending && 'animate-spin')}
+                    />
+                    Fetch URL
+                  </Button>
+                ) : null}
                 {source.status === 'archived' ? (
                   <Button
                     className="w-full"

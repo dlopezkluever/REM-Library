@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AlertTriangle,
@@ -7,6 +7,7 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  Plus,
   RefreshCw,
   Search,
 } from 'lucide-react'
@@ -148,6 +149,12 @@ export default function AdminEntityManagerPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          <Button asChild size="sm" type="button" variant="outline">
+            <Link to="/admin/entities/new">
+              <Plus aria-hidden="true" className="h-3.5 w-3.5" />
+              Create entity
+            </Link>
+          </Button>
           <Button
             disabled={entitiesQuery.isFetching}
             size="sm"
