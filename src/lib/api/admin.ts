@@ -18,6 +18,11 @@ export type AdminExtractionRow = Tables<'extractions'>
 export type AdminChunkRow = Tables<'chunks'>
 export type AdminRelationshipRow = Tables<'relationships'>
 export type RelationshipStatus = 'active' | 'archived'
+export type AdminSuggestionRow = Tables<'suggestions'> & {
+  submitter?: Pick<Tables<'profiles'>, 'display_name' | 'email'> | null
+  targetClaim?: Pick<Tables<'claims'>, 'id' | 'statement'> | null
+  targetEntity?: Pick<Tables<'entities'>, 'id' | 'name' | 'slug'> | null
+}
 
 export interface AdminDashboardCounts {
   publishedEntities: number
@@ -351,6 +356,7 @@ const adminRelationshipMaxPageSize = 100
 const confidenceComputationBatchSize = 200
 const reviewQueuePageSize = 50
 const sourceFileBucket = 'source-files'
+const entityImagesBucket = 'entity-images'
 
 const requireCount = (count: number | null) => count ?? 0
 
@@ -1136,7 +1142,10 @@ export const updateSourceCategory = async (sourceId: string, category: SourceCat
 
 export const updateSourceRightsMetadata = async (
   sourceId: string,
-  values: Pick<TablesUpdate<'sources'>, 'attribution' | 'license' | 'rights_notes'>
+  values: Pick<
+    TablesUpdate<'sources'>,
+    'attribution' | 'fair_use_rationale' | 'license' | 'rights_notes'
+  >
 ) => {
   const { data, error } = await supabase
     .from('sources')
@@ -1164,6 +1173,69 @@ export const triggerUrlFetch = async (sourceId: string) => {
   }
 
   return data as { chunks_created?: number; pipeline_stage?: string; source_id?: string }
+}
+
+export const triggerSiteCrawl = async (rootUrl: string) => {
+  const { data, error } = await supabase.functions.invoke('trigger-site-crawl', {
+    body: { root_url: rootUrl },
+  })
+
+  if (error) {
+    throw error
+  }
+
+  return data as {
+    created: Array<{ id: string; title: string; url: string; word_count: number }>
+    skipped: Array<{ reason: string; url: string }>
+  }
+}
+
+export const createEntityImagePath = (entityId: string, file: File, kind: 'hero' | 'profile') => {
+  const extension = file.name.includes('.') ? file.name.split('.').pop()?.toLowerCase() : 'jpg'
+  const safeExtension = extension?.replace(/[^a-z0-9]/g, '') || 'jpg'
+
+  return `${entityId}/${kind}-${Date.now()}.${safeExtension}`
+}
+
+export const uploadEntityImage = async (
+  entityId: string,
+  file: File,
+  kind: 'hero' | 'profile'
+) => {
+  const path = createEntityImagePath(entityId, file, kind)
+  const { error } = await supabase.storage.from(entityImagesBucket).upload(path, file, {
+    cacheControl: '3600',
+    contentType: file.type || undefined,
+    upsert: true,
+  })
+
+  if (error) {
+    throw error
+  }
+
+  const { data } = supabase.storage.from(entityImagesBucket).getPublicUrl(path)
+
+  return data.publicUrl
+}
+
+export const updateEntityImages = async (
+  entityId: string,
+  values: Pick<TablesUpdate<'entities'>, 'hero_image_url' | 'image_url'>
+) => {
+  const { data, error } = await supabase
+    .from('entities')
+    .update(values)
+    .eq('id', entityId)
+    .select('*')
+    .single()
+
+  if (error) {
+    throw error
+  }
+
+  await insertAdminAuditEvent('update_entity_images', 'entities', entityId, values as Json)
+
+  return data
 }
 
 export const listUrlIngestionDomains = async (): Promise<UrlIngestionDomainRow[]> => {
@@ -1249,6 +1321,82 @@ export const updateUrlIngestionDomainEnabled = async (domainId: string, enabled:
   return data
 }
 
+export const getAdminSuggestions = async (): Promise<AdminSuggestionRow[]> => {
+  const { data, error } = await supabase
+    .from('suggestions')
+    .select(
+      `
+      *,
+      submitter:profiles!suggestions_submitter_id_fkey(display_name,email),
+      targetEntity:entities!suggestions_target_entity_id_fkey(id,name,slug),
+      targetClaim:claims!suggestions_target_claim_id_fkey(id,statement)
+    `
+    )
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    throw error
+  }
+
+  return data as unknown as AdminSuggestionRow[]
+}
+
+export const approveSuggestion = async (suggestionId: string, adminNote: string | null = null) => {
+  const { data, error } = await supabase.rpc('approve_suggestion', {
+    admin_note: adminNote,
+    suggestion_id: suggestionId,
+  })
+
+  if (error) {
+    throw error
+  }
+
+  return data as { created_claim_id: string | null; status: string; suggestion_id: string }
+}
+
+export const rejectSuggestion = async (suggestionId: string, rejectionReason: string | null) => {
+  const { data, error } = await supabase
+    .from('suggestions')
+    .update({
+      rejection_reason: rejectionReason,
+      reviewed_at: new Date().toISOString(),
+      reviewed_by: await getCurrentAdminUserId(),
+      status: 'rejected',
+    })
+    .eq('id', suggestionId)
+    .select('*')
+    .single()
+
+  if (error) {
+    throw error
+  }
+
+  return data
+}
+
+export const requestSuggestionClarification = async (
+  suggestionId: string,
+  adminNotes: string | null
+) => {
+  const { data, error } = await supabase
+    .from('suggestions')
+    .update({
+      admin_notes: adminNotes,
+      reviewed_at: new Date().toISOString(),
+      reviewed_by: await getCurrentAdminUserId(),
+      status: 'clarification_requested',
+    })
+    .eq('id', suggestionId)
+    .select('*')
+    .single()
+
+  if (error) {
+    throw error
+  }
+
+  return data
+}
+
 export const getAdminSourceListRows = async (): Promise<AdminSourceListRow[]> => {
   const { data, error } = await supabase.rpc('get_admin_source_list_rows', {
     page_limit: adminSourceListLimit,
@@ -1269,6 +1417,7 @@ export const getAdminSourceListRows = async (): Promise<AdminSourceListRow[]> =>
       created_at: row.created_at,
       description: row.description,
       duration_seconds: row.duration_seconds,
+      fair_use_rationale: null,
       file_path: row.file_path,
       format: row.format,
       id: row.id,
@@ -1460,7 +1609,9 @@ export const getAdminEntitiesPage = async ({
       date_sort_year: null,
       description: row.description,
       fts: null,
+      hero_image_url: null,
       id: row.id,
+      image_url: null,
       name: row.name,
       position_x: row.position_x,
       position_y: row.position_y,
@@ -2480,6 +2631,7 @@ const isAdminSourceRow = (value: unknown): value is AdminSourceRow => {
     isNullableString(value.crawl_date) &&
     isNullableString(value.license) &&
     isNullableString(value.rights_notes) &&
+    isNullableString(value.fair_use_rationale) &&
     isNullableString(value.attribution) &&
     isPipelineStage(value.pipeline_stage) &&
     isNullableString(value.pipeline_error) &&
