@@ -10,13 +10,16 @@ import ClaimDetailPage from '@/pages/claim/ClaimDetailPage'
 import SourceLibraryPage from '@/pages/sources/SourceLibraryPage'
 import SourceDetailPage from '@/pages/sources/SourceDetailPage'
 import SearchPage from '@/pages/search/SearchPage'
+import RegisterPage from '@/pages/auth/RegisterPage'
 import AdminLoginPage from '@/pages/admin/AdminLoginPage'
 import AdminDashboardPage from '@/pages/admin/AdminDashboardPage'
 import AdminSourceListPage from '@/pages/admin/AdminSourceListPage'
 import AdminSourceNewPage from '@/pages/admin/AdminSourceNewPage'
 import AdminSourceDetailPage from '@/pages/admin/AdminSourceDetailPage'
 import AdminSourceImpactPage from '@/pages/admin/AdminSourceImpactPage'
+import AdminUrlCrawlPage from '@/pages/admin/AdminUrlCrawlPage'
 import AdminReviewQueuePage from '@/pages/admin/AdminReviewQueuePage'
+import AdminSuggestionManagerPage from '@/pages/admin/AdminSuggestionManagerPage'
 import AdminEntityManagerPage from '@/pages/admin/AdminEntityManagerPage'
 import AdminEntityNewPage from '@/pages/admin/AdminEntityNewPage'
 import AdminClaimManagerPage from '@/pages/admin/AdminClaimManagerPage'
@@ -62,6 +65,7 @@ export const router = createBrowserRouter([
       { path: '/source/:id', element: <SourceDetailPage /> },
       { path: '/sources/:id', element: <SourceDetailPage /> },
       { path: '/search', element: <SearchPage /> },
+      { path: ROUTES.REGISTER, element: <RegisterPage /> },
       {
         path: '/explorations',
         element: (
@@ -103,10 +107,12 @@ export const router = createBrowserRouter([
           { path: '/admin', element: <Navigate to="/admin/dashboard" replace /> },
           { path: '/admin/dashboard', element: <AdminDashboardPage /> },
           { path: '/admin/sources', element: <AdminSourceListPage /> },
+          { path: ROUTES.ADMIN_SOURCE_CRAWL, element: <AdminUrlCrawlPage /> },
           { path: '/admin/sources/new', element: <AdminSourceNewPage /> },
           { path: '/admin/sources/:id', element: <AdminSourceDetailPage /> },
           { path: '/admin/sources/:id/impact', element: <AdminSourceImpactPage /> },
           { path: '/admin/review', element: <AdminReviewQueuePage /> },
+          { path: ROUTES.ADMIN_SUGGESTIONS, element: <AdminSuggestionManagerPage /> },
           { path: '/admin/entities', element: <AdminEntityManagerPage /> },
           { path: ROUTES.ADMIN_ENTITY_NEW, element: <AdminEntityNewPage /> },
           { path: '/admin/claims', element: <AdminClaimManagerPage /> },
