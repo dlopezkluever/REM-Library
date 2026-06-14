@@ -75,3 +75,5 @@ export const truncateText = (value: string | null, maxLength: number) => {
 
   return `${value.slice(0, maxLength).trim()}...`
 }
+
+export const formatEnumLabel = (value: string) => value.replace(/_/g, ' ')
