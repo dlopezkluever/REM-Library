@@ -19,7 +19,7 @@ import {
   type AdminFlagModerationRow,
 } from '@/lib/api/admin'
 import type { FlagTargetType } from '@/lib/api/community'
-import { truncateText } from '@/lib/format'
+import { formatEnumLabel, truncateText } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 const adminFlagsQueryKey = ['admin', 'flags'] as const
@@ -29,8 +29,6 @@ const statusClassNames: Record<string, string> = {
   open: 'border-iris/30 bg-iris-light text-iris-dark',
   resolved: 'border-verdigris bg-verdigris-light text-verdigris-dark',
 }
-
-const reasonLabel = (reason: string) => reason.replace(/_/g, ' ')
 
 const getErrorMessage = (error: unknown) =>
   error instanceof Error ? error.message : 'Flag moderation failed.'
@@ -97,6 +95,9 @@ export default function AdminFlagQueuePage() {
       await queryClient.invalidateQueries({ queryKey: ['admin', 'entities'] })
     } else if (flag.target_type === 'source') {
       await queryClient.invalidateQueries({ queryKey: ['admin', 'source-list'] })
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'sources'] })
+    } else if (flag.target_type === 'comment') {
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'comments'] })
     }
   }
 
@@ -234,7 +235,7 @@ export default function AdminFlagQueuePage() {
                   <TableCell className="font-body text-sm text-ink">{reporterLabel}</TableCell>
                   <TableCell>
                     <Badge className="border-terracotta/25 bg-terracotta-light text-terracotta-dark">
-                      {reasonLabel(flag.reason)}
+                      {formatEnumLabel(flag.reason)}
                     </Badge>
                   </TableCell>
                   <TableCell className="max-w-[320px] font-body text-sm text-[#555]">

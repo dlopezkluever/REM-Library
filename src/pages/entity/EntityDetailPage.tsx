@@ -24,11 +24,9 @@ import { ENTITY_LABELS } from '@/constants/entityTypes'
 import { getClaimsForEntity } from '@/lib/api/claims'
 import { getEntityBySlug, getEntityNeighborhood } from '@/lib/api/entities'
 import { getSourceEvidenceForClaims, type SourceAnchorEvidence } from '@/lib/api/sources'
-import { truncateText } from '@/lib/format'
+import { formatEnumLabel, truncateText } from '@/lib/format'
 import type { ClaimWithAuthor } from '@/lib/api/claims'
 import type { InterpretationFrame } from '@/types/domain'
-
-const relationshipLabel = (type: string) => type.replace(/_/g, ' ')
 
 const frameLabels: Record<InterpretationFrame, string> = {
   canonical_rem: 'Canonical REM',
@@ -392,7 +390,7 @@ export default function EntityDetailPage() {
                     key={connectedEntity.id}
                     name={connectedEntity.name}
                     relationshipLabel={
-                      relationship ? relationshipLabel(relationship.type) : undefined
+                      relationship ? formatEnumLabel(relationship.type) : undefined
                     }
                     slug={connectedEntity.slug}
                     type={connectedEntity.type}
