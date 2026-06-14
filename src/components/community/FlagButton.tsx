@@ -61,18 +61,22 @@ export const FlagButton = ({ targetId, targetType }: FlagButtonProps) => {
     onSuccess: async () => {
       setSubmittedFlag(true)
       setOpen(false)
+      setReason('factually_incorrect')
       setNotes('')
       await queryClient.invalidateQueries({ queryKey: flagQueryKey })
       await queryClient.invalidateQueries({ queryKey: ['admin'] })
     },
   })
 
+  if (!user) {
+    return null
+  }
+
   return (
     <>
       <Button
-        disabled={!user || flagged || flagMutation.isPending}
+        disabled={flagged || flagMutation.isPending || flagQuery.isLoading}
         size="sm"
-        title={!user ? 'Sign in to flag content' : undefined}
         type="button"
         variant="ghost"
         onClick={() => setOpen(true)}
@@ -80,7 +84,17 @@ export const FlagButton = ({ targetId, targetType }: FlagButtonProps) => {
         <Flag aria-hidden="true" className="h-3.5 w-3.5" />
         {flagged ? 'Flagged' : 'Flag'}
       </Button>
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog
+        open={open}
+        onOpenChange={(nextOpen) => {
+          setOpen(nextOpen)
+
+          if (!nextOpen && !flagMutation.isSuccess) {
+            setReason('factually_incorrect')
+            setNotes('')
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Flag Content</DialogTitle>

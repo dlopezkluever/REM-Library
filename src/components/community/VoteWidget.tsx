@@ -10,6 +10,7 @@ import {
   type CommunityTargetType,
   type VoteValue,
 } from '@/lib/api/community'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useAuth } from '@/hooks/useAuth'
 import { cn } from '@/lib/utils'
 
@@ -92,7 +93,7 @@ export const VoteWidget = ({ compact = false, targetId, targetType }: VoteWidget
   const [optimisticVote, setOptimisticVote] = useState<VoteValue | null | undefined>(undefined)
   const [error, setError] = useState<string | null>(null)
   const score = optimisticScore ?? scoreQuery.data ?? emptyScore
-  const vote = optimisticVote !== undefined ? optimisticVote : voteQuery.data ?? null
+  const vote = optimisticVote !== undefined ? optimisticVote : (voteQuery.data ?? null)
 
   const voteMutation = useMutation({
     mutationFn: async (nextVote: VoteValue | null) => {
@@ -102,7 +103,11 @@ export const VoteWidget = ({ compact = false, targetId, targetType }: VoteWidget
         await castVote(targetType, targetId, nextVote)
       }
     },
-    onError: (mutationError, _nextVote, context: { previousScore: CommunityScore; previousVote: VoteValue | null } | undefined) => {
+    onError: (
+      mutationError,
+      _nextVote,
+      context: { previousScore: CommunityScore; previousVote: VoteValue | null } | undefined
+    ) => {
       setOptimisticScore(context?.previousScore ?? null)
       setOptimisticVote(context?.previousVote)
       setError(mutationError instanceof Error ? mutationError.message : 'Vote could not be saved.')
@@ -135,6 +140,45 @@ export const VoteWidget = ({ compact = false, targetId, targetType }: VoteWidget
     voteMutation.mutate(vote === value ? null : value)
   }
 
+  const renderVoteButton = (value: VoteValue) => {
+    const active = vote === value
+    const Icon = value === 1 ? ThumbsUp : ThumbsDown
+    const count = value === 1 ? score.upvote_count : score.downvote_count
+    const button = (
+      <button
+        aria-label={value === 1 ? 'Upvote' : 'Downvote'}
+        className={cn(
+          'inline-flex h-9 items-center gap-1.5 px-3 font-body text-xs transition-colors',
+          value === 1 ? 'border-r-0.5 border-black/10' : 'border-l-0.5 border-black/10',
+          active
+            ? value === 1
+              ? 'bg-verdigris-light text-verdigris-dark'
+              : 'bg-terracotta-light text-terracotta-dark'
+            : 'text-[#666] hover:text-ink'
+        )}
+        disabled={!user || voteMutation.isPending}
+        type="button"
+        onClick={() => handleVote(value)}
+      >
+        <Icon aria-hidden="true" className="h-3.5 w-3.5" />
+        {count}
+      </button>
+    )
+
+    if (user) {
+      return button
+    }
+
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex cursor-not-allowed">{button}</span>
+        </TooltipTrigger>
+        <TooltipContent>Sign in to vote</TooltipContent>
+      </Tooltip>
+    )
+  }
+
   if (compact) {
     return (
       <div className="inline-flex items-center gap-1.5 rounded border-0.5 border-black/10 bg-white px-2 py-1 font-body text-xs text-[#666]">
@@ -146,39 +190,15 @@ export const VoteWidget = ({ compact = false, targetId, targetType }: VoteWidget
 
   return (
     <div>
-      <div className="inline-flex items-center overflow-hidden rounded border-0.5 border-black/10 bg-white">
-        <button
-          aria-label="Upvote"
-          className={cn(
-            'inline-flex h-9 items-center gap-1.5 border-r-0.5 border-black/10 px-3 font-body text-xs transition-colors',
-            vote === 1 ? 'bg-verdigris-light text-verdigris-dark' : 'text-[#666] hover:text-ink'
-          )}
-          disabled={!user || voteMutation.isPending}
-          title={!user ? 'Sign in to vote' : undefined}
-          type="button"
-          onClick={() => handleVote(1)}
-        >
-          <ThumbsUp aria-hidden="true" className="h-3.5 w-3.5" />
-          {score.upvote_count}
-        </button>
-        <div className="min-w-14 px-3 text-center font-display text-[10px] uppercase tracking-label text-ink">
-          {score.community_score}
+      <TooltipProvider>
+        <div className="inline-flex items-center overflow-hidden rounded border-0.5 border-black/10 bg-white">
+          {renderVoteButton(1)}
+          <div className="min-w-14 px-3 text-center font-display text-[10px] uppercase tracking-label text-ink">
+            {score.community_score}
+          </div>
+          {renderVoteButton(-1)}
         </div>
-        <button
-          aria-label="Downvote"
-          className={cn(
-            'inline-flex h-9 items-center gap-1.5 border-l-0.5 border-black/10 px-3 font-body text-xs transition-colors',
-            vote === -1 ? 'bg-terracotta-light text-terracotta-dark' : 'text-[#666] hover:text-ink'
-          )}
-          disabled={!user || voteMutation.isPending}
-          title={!user ? 'Sign in to vote' : undefined}
-          type="button"
-          onClick={() => handleVote(-1)}
-        >
-          <ThumbsDown aria-hidden="true" className="h-3.5 w-3.5" />
-          {score.downvote_count}
-        </button>
-      </div>
+      </TooltipProvider>
       {scoreQuery.isError ? (
         <p className="mt-2 font-body text-xs text-terracotta-dark">Community score unavailable.</p>
       ) : null}
