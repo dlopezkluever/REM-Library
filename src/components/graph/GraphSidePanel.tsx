@@ -9,7 +9,7 @@ import { EntityChip } from '@/components/entity/EntityChip'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { getEntityPreviewWithClaims, getPublishedEntities } from '@/lib/api/entities'
 import { getAllPublishedRelationships } from '@/lib/api/relationships'
-import { truncateText } from '@/lib/format'
+import { formatEnumLabel, truncateText } from '@/lib/format'
 import { useGraphStore } from '@/stores/graphStore'
 import type { InterpretationFrame } from '@/types/domain'
 
@@ -79,7 +79,7 @@ export const GraphSidePanel = () => {
         return [
           {
             entity: connectedEntity,
-            relationshipLabel: relationship.type.replace(/_/g, ' '),
+            relationshipLabel: formatEnumLabel(relationship.type),
           },
         ]
       })

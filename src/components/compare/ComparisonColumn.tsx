@@ -5,7 +5,7 @@ import { EntityBadge } from '@/components/entity/EntityBadge'
 import { AttestationBar } from '@/components/entity/AttestationBar'
 import { ConfidenceBadge } from '@/components/entity/ConfidenceBadge'
 import { EntityChip } from '@/components/entity/EntityChip'
-import { truncateText } from '@/lib/format'
+import { formatEnumLabel, truncateText } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 interface ComparisonColumnProps {
@@ -74,7 +74,7 @@ export const ComparisonColumn = ({
           <div className="mt-2 flex flex-wrap gap-2">
             {connections.map((connection) => {
               const relationshipLabel = connection.relationshipType
-                ? connection.relationshipType.replace(/_/g, ' ')
+                ? formatEnumLabel(connection.relationshipType)
                 : undefined
               return (
                 <span
