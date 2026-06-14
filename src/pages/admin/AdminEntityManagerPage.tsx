@@ -8,11 +8,13 @@ import {
   ChevronLeft,
   ChevronRight,
   Image as ImageIcon,
+  Flag,
   Plus,
   RefreshCw,
   Search,
   Upload,
 } from 'lucide-react'
+import { FlagDetailPanel } from '@/components/admin/FlagDetailPanel'
 import { ConfidenceOverrideInput } from '@/components/admin/ConfidenceOverrideInput'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -125,6 +127,7 @@ export default function AdminEntityManagerPage() {
 
   const [datesEntity, setDatesEntity] = useState<AdminEntityRow | null>(null)
   const [imagesEntity, setImagesEntity] = useState<AdminEntityRow | null>(null)
+  const [flagsEntity, setFlagsEntity] = useState<AdminEntityRow | null>(null)
 
   const entityPage = entitiesQuery.data
   const entities = entityPage?.entities ?? []
@@ -274,6 +277,9 @@ export default function AdminEntityManagerPage() {
               <TableHead>Type</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Score</TableHead>
+              <TableHead>Community</TableHead>
+              <TableHead>Flags</TableHead>
+              <TableHead>Comments</TableHead>
               <TableHead>Aliases</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
@@ -281,7 +287,7 @@ export default function AdminEntityManagerPage() {
           <TableBody>
             {entitiesQuery.isLoading ? (
               <TableRow>
-                <TableCell className="font-body text-sm text-[#777]" colSpan={7}>
+                <TableCell className="font-body text-sm text-[#777]" colSpan={10}>
                   Loading entities...
                 </TableCell>
               </TableRow>
@@ -289,7 +295,7 @@ export default function AdminEntityManagerPage() {
 
             {entitiesQuery.error ? (
               <TableRow>
-                <TableCell className="font-body text-sm text-terracotta-dark" colSpan={7}>
+                <TableCell className="font-body text-sm text-terracotta-dark" colSpan={10}>
                   Entities could not load.
                 </TableCell>
               </TableRow>
@@ -297,7 +303,7 @@ export default function AdminEntityManagerPage() {
 
             {!entitiesQuery.isLoading && !entitiesQuery.error && entities.length === 0 ? (
               <TableRow>
-                <TableCell className="font-body text-sm text-[#777]" colSpan={7}>
+                <TableCell className="font-body text-sm text-[#777]" colSpan={10}>
                   No entities have been created yet.
                 </TableCell>
               </TableRow>
@@ -349,6 +355,24 @@ export default function AdminEntityManagerPage() {
                         confidenceOverrideMutation.mutateAsync({ entity, override })
                       }
                     />
+                  </TableCell>
+                  <TableCell className="font-body text-sm text-ink">
+                    {entity.communityScore > 0 ? '+' : ''}
+                    {entity.communityScore}
+                  </TableCell>
+                  <TableCell>
+                    <button
+                      className="inline-flex items-center gap-1 rounded border-0.5 border-black/10 bg-white px-2 py-1 font-body text-xs text-terracotta hover:border-terracotta/40 disabled:text-[#999]"
+                      disabled={entity.flagCount === 0}
+                      type="button"
+                      onClick={() => setFlagsEntity(entity)}
+                    >
+                      <Flag aria-hidden="true" className="h-3 w-3" />
+                      {entity.flagCount}
+                    </button>
+                  </TableCell>
+                  <TableCell className="font-body text-sm text-ink">
+                    {entity.pendingCommentCount}
                   </TableCell>
                   <TableCell className="max-w-[260px] truncate font-body text-sm text-[#777]">
                     {entity.aliases.length > 0 ? entity.aliases.join(', ') : 'None'}
@@ -482,6 +506,14 @@ export default function AdminEntityManagerPage() {
           ) : null}
         </DialogContent>
       </Dialog>
+
+      <FlagDetailPanel
+        open={flagsEntity !== null}
+        targetId={flagsEntity?.id ?? null}
+        targetLabel={flagsEntity?.name ?? ''}
+        targetType="entity"
+        onOpenChange={(open) => !open && setFlagsEntity(null)}
+      />
     </div>
   )
 }
