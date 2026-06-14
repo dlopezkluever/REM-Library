@@ -11,11 +11,9 @@ import {
   triggerUrlFetch,
 } from '@/lib/api/admin'
 import { ROUTES } from '@/constants/routes'
+import { getErrorMessage } from '@/lib/format'
 
 type CrawlCandidate = Awaited<ReturnType<typeof triggerSiteCrawl>>['created'][number]
-
-const getErrorMessage = (error: unknown) =>
-  error instanceof Error ? error.message : 'Site crawl failed.'
 
 function CrawlResultRow({ source }: { source: CrawlCandidate }) {
   const queryClient = useQueryClient()
