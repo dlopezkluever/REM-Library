@@ -5,7 +5,7 @@
 -- ---------------------------------------------------------------------------
 -- Role helper: who may contribute community content.
 -- `has_internal_access()` deliberately excludes the public `contributor` role,
--- so community writes use this broader check (contributor and every staff role).
+-- so community writes use this check for contributors plus write-capable staff.
 -- ---------------------------------------------------------------------------
 create or replace function public.has_community_access()
 returns boolean
@@ -16,7 +16,7 @@ stable
 as $$
   select coalesce(
     (
-      select role in ('contributor', 'viewer', 'editor', 'super_admin')
+      select role in ('contributor', 'editor', 'super_admin')
       from public.profiles
       where id = auth.uid()
     ),
@@ -34,7 +34,7 @@ create table if not exists public.comments (
     check (target_type in ('entity', 'claim', 'source')),
   target_id uuid not null,
   parent_id uuid references public.comments(id) on delete cascade,
-  body text not null check (char_length(body) between 1 and 2000),
+  body text not null check (char_length(btrim(body)) between 10 and 2000),
   status text not null default 'pending'
     check (status in ('pending', 'approved', 'rejected', 'needs_clarification')),
   reviewer_id uuid references public.profiles(id) on delete set null,
@@ -43,6 +43,20 @@ create table if not exists public.comments (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.comments
+  drop constraint if exists comments_body_check;
+
+alter table public.comments
+  add constraint comments_body_check
+  check (char_length(btrim(body)) between 10 and 2000);
+
+alter table public.comments
+  drop constraint if exists comments_reviewer_note_length_check;
+
+alter table public.comments
+  add constraint comments_reviewer_note_length_check
+  check (reviewer_note is null or char_length(reviewer_note) <= 1000);
 
 create index if not exists comments_target_idx
   on public.comments (target_type, target_id, status);
@@ -80,14 +94,18 @@ drop policy if exists "comments contributor insert" on public.comments;
 create policy "comments contributor insert"
   on public.comments for insert
   to authenticated
-  with check (author_id = auth.uid() and public.has_community_access());
+  with check (
+    author_id = auth.uid()
+    and status = 'pending'
+    and public.has_community_access()
+  );
 
--- Authors may edit their own comments while still pending.
+-- Authors may edit pending comments, or revise clarification requests back to pending.
 drop policy if exists "comments own update pending" on public.comments;
 create policy "comments own update pending"
   on public.comments for update
   to authenticated
-  using (author_id = auth.uid() and status = 'pending')
+  using (author_id = auth.uid() and status in ('pending', 'needs_clarification'))
   with check (author_id = auth.uid() and status = 'pending');
 
 -- Admins can update (approve / reject / request clarification).
@@ -154,6 +172,104 @@ before insert or update of parent_id, target_type, target_id on public.comments
 for each row
 execute function public.validate_comment_parent();
 
+create or replace function public.enforce_comment_author_write_guards()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  pending_count integer;
+begin
+  new.body = btrim(new.body);
+
+  if char_length(new.body) < 10 or char_length(new.body) > 2000 then
+    raise exception 'Comments must be between 10 and 2000 characters.';
+  end if;
+
+  if public.is_admin() then
+    return new;
+  end if;
+
+  if tg_op = 'INSERT' then
+    if new.author_id <> auth.uid() or new.status <> 'pending' then
+      raise exception 'Community comments must be submitted for review.';
+    end if;
+
+    select count(*)::integer
+    into pending_count
+    from public.comments
+    where author_id = new.author_id
+      and status = 'pending';
+
+    if pending_count >= 5 then
+      raise exception 'You have 5 comments awaiting review. Please wait for moderation before adding more.';
+    end if;
+
+    return new;
+  end if;
+
+  if new.author_id <> old.author_id
+    or new.target_type <> old.target_type
+    or new.target_id <> old.target_id
+    or new.parent_id is distinct from old.parent_id
+    or new.created_at is distinct from old.created_at then
+    raise exception 'Only the comment body can be edited.';
+  end if;
+
+  if old.status not in ('pending', 'needs_clarification') then
+    raise exception 'Only pending or clarification-requested comments can be edited.';
+  end if;
+
+  new.status = 'pending';
+  new.reviewer_id = null;
+  new.reviewer_note = null;
+  new.reviewed_at = null;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists comments_author_write_guards on public.comments;
+create trigger comments_author_write_guards
+before insert or update on public.comments
+for each row
+execute function public.enforce_comment_author_write_guards();
+
+create or replace function public.update_own_comment_body(
+  p_comment_id uuid,
+  p_body text
+)
+returns public.comments
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  updated_comment public.comments;
+begin
+  update public.comments
+  set
+    body = btrim(p_body),
+    status = 'pending',
+    reviewer_id = null,
+    reviewer_note = null,
+    reviewed_at = null
+  where id = p_comment_id
+    and author_id = auth.uid()
+    and status in ('pending', 'needs_clarification')
+  returning * into updated_comment;
+
+  if updated_comment.id is null then
+    raise exception 'Comment is not editable.';
+  end if;
+
+  return updated_comment;
+end;
+$$;
+
+grant execute on function public.update_own_comment_body(uuid, text) to authenticated;
+
 -- ---------------------------------------------------------------------------
 -- 7.2 content_votes
 -- ---------------------------------------------------------------------------
@@ -173,11 +289,19 @@ create index if not exists content_votes_target_idx
 
 alter table public.content_votes enable row level security;
 
--- Anyone can read raw votes (aggregates are also exposed via community_scores).
+-- Vote aggregates are public through community_scores. Raw vote rows are private.
 drop policy if exists "votes public read" on public.content_votes;
-create policy "votes public read"
+drop policy if exists "votes own read" on public.content_votes;
+create policy "votes own read"
   on public.content_votes for select
-  using (true);
+  to authenticated
+  using (user_id = auth.uid());
+
+drop policy if exists "votes admin read" on public.content_votes;
+create policy "votes admin read"
+  on public.content_votes for select
+  to authenticated
+  using (public.is_admin());
 
 -- Authenticated community users can cast their own vote.
 drop policy if exists "votes authenticated insert" on public.content_votes;
@@ -276,7 +400,8 @@ grant select on public.community_scores to anon, authenticated;
 -- ---------------------------------------------------------------------------
 -- 7.5 open_flag_counts view (admin prioritization)
 -- ---------------------------------------------------------------------------
-create or replace view public.open_flag_counts as
+create or replace view public.open_flag_counts
+with (security_invoker = true) as
 select
   target_type,
   target_id,
@@ -299,11 +424,18 @@ returns table (
   flag_count integer,
   community_score integer
 )
-language sql
+language plpgsql
 stable
 security definer
 set search_path = public
 as $$
+begin
+  if not public.is_admin() then
+    raise exception 'Admin privileges are required to read review queue signals.'
+      using errcode = '42501';
+  end if;
+
+  return query
   with source_claims as (
     select distinct source_anchors.source_id, claim_evidence.claim_id
     from public.source_anchors
@@ -367,10 +499,124 @@ as $$
     coalesce(vote_agg.community_score, 0) as community_score
   from flag_agg
   full outer join vote_agg on vote_agg.source_id = flag_agg.source_id;
+end;
 $$;
 
 revoke all on function public.get_review_queue_signals() from public;
 grant execute on function public.get_review_queue_signals() to authenticated;
+
+create or replace function public.get_pending_review_source_summaries(
+  page_limit integer default 50,
+  page_offset integer default 0,
+  sort_mode text default 'oldest'
+)
+returns table (
+  source_id uuid,
+  source_title text,
+  source_status public.content_status,
+  source_format public.source_format,
+  source_tier public.source_tier,
+  pending_item_count integer,
+  pending_extraction_count integer,
+  validation_failed_count integer,
+  oldest_extraction_at timestamptz,
+  flag_count integer,
+  community_score integer
+)
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_admin() then
+    raise exception 'Admin privileges are required to read the review queue.'
+      using errcode = '42501';
+  end if;
+
+  if sort_mode not in ('oldest', 'newest', 'most_flagged', 'highest_community_score') then
+    raise exception 'Unsupported review queue sort: %', sort_mode;
+  end if;
+
+  return query
+  with pending as (
+    select
+      sources.id as source_id,
+      sources.title as source_title,
+      sources.status as source_status,
+      sources.format as source_format,
+      sources.tier as source_tier,
+      extractions.id as extraction_id,
+      extractions.created_at,
+      (
+        select count(*)::integer
+        from (
+          select item.value
+          from jsonb_array_elements(coalesce(extractions.extraction_data->'entities', '[]'::jsonb)) as item(value)
+          union all
+          select item.value
+          from jsonb_array_elements(coalesce(extractions.extraction_data->'claims', '[]'::jsonb)) as item(value)
+        ) items
+        where coalesce(items.value->>'review_status', 'pending') = 'pending'
+      ) as item_count,
+      (extractions.extraction_data->>'validation_failed') = 'true' as validation_failed
+    from public.extractions
+    join public.chunks on chunks.id = extractions.chunk_id
+    join public.sources on sources.id = chunks.source_id
+    where extractions.status = 'pending'
+      and sources.status <> 'archived'
+  ),
+  grouped as (
+    select
+      pending.source_id,
+      pending.source_title,
+      pending.source_status,
+      pending.source_format,
+      pending.source_tier,
+      sum(pending.item_count)::integer as pending_item_count,
+      count(*)::integer as pending_extraction_count,
+      count(*) filter (where pending.validation_failed)::integer as validation_failed_count,
+      min(pending.created_at) as oldest_extraction_at
+    from pending
+    where pending.item_count > 0 or pending.validation_failed
+    group by
+      pending.source_id,
+      pending.source_title,
+      pending.source_status,
+      pending.source_format,
+      pending.source_tier
+  ),
+  signals as (
+    select *
+    from public.get_review_queue_signals()
+  )
+  select
+    grouped.source_id,
+    grouped.source_title,
+    grouped.source_status,
+    grouped.source_format,
+    grouped.source_tier,
+    grouped.pending_item_count,
+    grouped.pending_extraction_count,
+    grouped.validation_failed_count,
+    grouped.oldest_extraction_at,
+    coalesce(signals.flag_count, 0) as flag_count,
+    coalesce(signals.community_score, 0) as community_score
+  from grouped
+  left join signals on signals.source_id = grouped.source_id
+  order by
+    case when sort_mode = 'most_flagged' then coalesce(signals.flag_count, 0) end desc nulls last,
+    case when sort_mode = 'highest_community_score' then coalesce(signals.community_score, 0) end desc nulls last,
+    case when sort_mode = 'newest' then grouped.oldest_extraction_at end desc nulls last,
+    grouped.oldest_extraction_at asc,
+    grouped.source_title asc
+  limit greatest(1, least(coalesce(page_limit, 50), 100))
+  offset greatest(coalesce(page_offset, 0), 0);
+end;
+$$;
+
+revoke all on function public.get_pending_review_source_summaries(integer, integer, text) from public;
+grant execute on function public.get_pending_review_source_summaries(integer, integer, text) to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- Public read of approved comments with author display name.
