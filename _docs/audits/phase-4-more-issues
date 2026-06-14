@@ -1,0 +1,79 @@
+[
+{
+    "file": "src/lib/api/community.ts",
+    "line": 303,
+    "summary": "getUserFlag has no status filter, permanently locking the UI as 'Flagged' after an admin resolves or dismisses the flag",
+    "failure_scenario": "User flags a claim; admin dismisses the flag (status → 'dismissed', row stays in table). getUserFlag returns the dismissed row because it has no
+.eq('status','open') filter. FlagButton sets flagged = Boolean(flagQuery.data) = true, disabling the button forever — the user can never re-flag that content."
+},
+{
+    "file": "supabase/migrations/20260613040000_phase4_community.sql",
+    "line": 356,
+    "summary": "UNIQUE (reporter_id, target_type, target_id) on content_flags has no partial index for status='open', so resolving/dismissing a flag permanently blocks re-flagging",      
+    "failure_scenario": "Even after fixing getUserFlag to filter by status='open', submitFlag does a plain INSERT. The unique constraint still holds the old resolved/dismissed row, so the  INSERT fails with a duplicate-key error. submitComment's error handler catches 'duplicate key' and re-locks the button, making re-flagging impossible at the DB level. Fix: replace the    
+full unique constraint with a partial unique index WHERE status = 'open', or upsert in submitFlag."
+},
+{
+    "file": "src/components/admin/FlagDetailPanel.tsx",
+    "line": 65,
+    "summary": "onSuccess invalidation ternary only handles 'claim'; 'source' and 'comment' target types both fall through to invalidating ['admin','entities'] instead of their own query 
+keys",
+    "failure_scenario": "Admin resolves a flag on a source. The ternary `targetType === 'claim' ? 'claims' : 'entities'` evaluates to 'entities'. ['admin','sources'] is never invalidated,  so the flag-count badge on the sources admin list stays stale until manual reload. For 'comment' flags, ['admin','entities'] is equally wrong — ['admin','comments'] is never flushed."    
+},
+{
+    "file": "src/lib/api/community.ts",
+    "line": 141,
+    "summary": "getMyPendingCommentCount (and the DB trigger enforce_comment_author_write_guards) count only status='pending', ignoring 'needs_clarification' — a user with 5
+needs_clarification comments can submit 5 more",
+    "failure_scenario": "User submits 5 comments; admin returns all 5 as needs_clarification. Client getMyPendingCommentCount returns 0 (counts only 'pending'). DB trigger also counts    
+only 'pending'. User can submit 5 fresh pending comments, putting 10 comments in the moderation queue simultaneously — defeating the spam-control cap. Both the client guard and trigger   
+SQL need to check status IN ('pending','needs_clarification')."
+},
+{
+    "file": "src/components/community/VoteWidget.tsx",
+    "line": 149,
+    "summary": "onSettled unconditionally invalidates ['admin'] after every vote, flushing the entire admin query cache from public-facing entity, source, and claim pages",
+    "failure_scenario": "A visitor upvotes a source on SourceDetailPage. onSettled fires queryClient.invalidateQueries({ queryKey: ['admin'] }), which refetches admin entities, claims,   
+review queue, comments, suggestions, etc. — none of which changed. VoteWidget is never rendered on any admin page, so this invalidation is always wasteful. Under concurrent public        
+traffic, admin query cache is continuously thrashed."
+},
+{
+    "file": "src/components/community/FlagButton.tsx",
+    "line": 68,
+    "summary": "onSuccess invalidates ['admin'] (all admin queries) instead of the narrower ['admin','flags'] after every flag submission from public pages",
+    "failure_scenario": "A contributor flags an entity on EntityDetailPage. onSuccess fires queryClient.invalidateQueries({ queryKey: ['admin'] }), refetching all admin queries (entities,  claims, review queue, comments, suggestions). Only the flags queue and review queue are actually affected; the rest is unnecessary. Like VoteWidget, FlagButton is used exclusively on     
+public pages."
+},
+{
+    "file": "supabase/migrations/20260613040000_phase4_community.sql",
+    "line": 203,
+    "summary": "enforce_comment_author_write_guards trigger has no NOT NULL or non-empty check on reviewer_note for needs_clarification status — a direct DB call can set a clarification  
+with a null/empty note",
+    "failure_scenario": "requestCommentClarification in admin.ts rejects empty notes in JS, but the DB trigger only enforces a 1000-char length cap (not a non-null/non-empty requirement) 
+for reviewer_note. A direct RPC call or future admin code path that bypasses requestCommentClarification can persist a needs_clarification comment with reviewer_note = NULL, leaving the  
+author with a status of 'Needs clarification' and no note explaining why."
+},
+{
+    "file": "src/lib/api/community.ts",
+    "line": 167,
+    "summary": "submitComment reads pending count then inserts non-atomically; the DB trigger fires a different error message than the client guard on concurrent submissions",
+    "failure_scenario": "Two browser tabs submit simultaneously. Both read pendingCount = 4, both pass the JS guard. The DB trigger (advisory-locked) allows exactly one insert; the second  raises 'You have 5 comments awaiting review. Please wait for moderation before adding more.' This message diverges from the client guard's wording and surfaces as a raw Supabase error    
+rather than the friendly client message, confusing users when the race fires."
+},
+{
+    "file": "src/components/admin/FlagDetailPanel.tsx",
+    "line": 29,
+    "summary": "reasonLabel = (r: string) => r.replace(/_/g,' ') is duplicated verbatim in AdminFlagQueuePage.tsx and appears as an inline one-liner in 6+ other files with no shared      
+utility",
+    "failure_scenario": "AdminFlagQueuePage and FlagDetailPanel already have the same named function; buildGraphology.ts uses it with .toUpperCase() — showing the fork has already        
+started. If label formatting changes (title-case, localisation) it must be hunted across 8+ call sites; missing one produces inconsistent UI labels between the queue list and the detail  
+panel."
+},
+{
+    "file": "src/components/community/CommentSection.tsx",
+    "line": 250,
+    "summary": "handleSubmitted and handleOwnCommentUpdated invalidate ['admin','comments'] on every comment action from public pages, even when no admin is present",
+    "failure_scenario": "A logged-in contributor submits a reply on a source page. handleSubmitted calls queryClient.invalidateQueries({ queryKey: ['admin','comments'] }), which refetches  the admin comment queue cache regardless of whether any admin tab is open. Under moderate usage (frequent comment submissions on popular pages), the admin comment queue cache is
+continuously evicted, causing unnecessary refetches when an admin eventually opens the panel."
+}
+]

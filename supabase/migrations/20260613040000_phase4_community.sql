@@ -58,6 +58,16 @@ alter table public.comments
   add constraint comments_reviewer_note_length_check
   check (reviewer_note is null or char_length(reviewer_note) <= 1000);
 
+alter table public.comments
+  drop constraint if exists comments_clarification_note_required_check;
+
+alter table public.comments
+  add constraint comments_clarification_note_required_check
+  check (
+    status <> 'needs_clarification'
+    or char_length(btrim(coalesce(reviewer_note, ''))) > 0
+  );
+
 create index if not exists comments_target_idx
   on public.comments (target_type, target_id, status);
 create index if not exists comments_status_idx
@@ -187,6 +197,15 @@ begin
     raise exception 'Comments must be between 10 and 2000 characters.';
   end if;
 
+  if new.reviewer_note is not null then
+    new.reviewer_note = btrim(new.reviewer_note);
+  end if;
+
+  if new.status = 'needs_clarification'
+    and char_length(coalesce(new.reviewer_note, '')) = 0 then
+    raise exception 'Clarification note is required.';
+  end if;
+
   if public.is_admin() then
     return new;
   end if;
@@ -204,10 +223,10 @@ begin
     into pending_count
     from public.comments
     where author_id = new.author_id
-      and status = 'pending';
+      and status in ('pending', 'needs_clarification');
 
     if pending_count >= 5 then
-      raise exception 'You have 5 comments awaiting review. Please wait for moderation before adding more.';
+      raise exception 'You have 5 comments awaiting review or clarification. Please resolve clarification requests or wait for moderation before adding more.';
     end if;
 
     return new;
@@ -352,14 +371,18 @@ create table if not exists public.content_flags (
     check (status in ('open', 'resolved', 'dismissed')),
   resolved_by uuid references public.profiles(id) on delete set null,
   resolved_at timestamptz,
-  created_at timestamptz not null default now(),
-  unique (reporter_id, target_type, target_id)
+  created_at timestamptz not null default now()
 );
 
 create index if not exists content_flags_target_idx
   on public.content_flags (target_type, target_id, status);
 create index if not exists content_flags_status_idx
   on public.content_flags (status, created_at);
+alter table public.content_flags
+  drop constraint if exists content_flags_reporter_id_target_type_target_id_key;
+create unique index if not exists content_flags_open_reporter_target_unique_idx
+  on public.content_flags (reporter_id, target_type, target_id)
+  where status = 'open';
 
 alter table public.content_flags enable row level security;
 
@@ -423,7 +446,7 @@ select
   target_id,
   count(*)::integer as pending_comment_count
 from public.comments
-where status = 'pending'
+where status in ('pending', 'needs_clarification')
 group by target_type, target_id;
 
 grant select on public.pending_comment_counts to authenticated;
