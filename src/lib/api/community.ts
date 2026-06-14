@@ -51,6 +51,8 @@ export const MAX_COMMENT_LENGTH = 2000
 export const MIN_COMMENT_LENGTH = 10
 // Risk R2: cap how many comments a single user can leave awaiting moderation.
 export const MAX_PENDING_COMMENTS = 5
+const PENDING_COMMENT_STATUSES = ['pending', 'needs_clarification'] as const
+export const PENDING_COMMENT_LIMIT_MESSAGE = `You have ${MAX_PENDING_COMMENTS} comments awaiting review or clarification. Please resolve clarification requests or wait for moderation before adding more.`
 
 export const FLAG_REASONS: { label: string; value: FlagReason }[] = [
   { label: 'Factually incorrect', value: 'factually_incorrect' },
@@ -77,6 +79,11 @@ const EMPTY_SCORE: CommunityScore = {
   total_votes: 0,
   upvote_count: 0,
 }
+
+const getErrorMessage = (error: unknown) =>
+  error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'
+    ? error.message
+    : null
 
 // ---------------------------------------------------------------------------
 // Comments
@@ -138,7 +145,7 @@ export const getMyPendingCommentCount = async (): Promise<number> => {
     .from('comments')
     .select('id', { count: 'exact', head: true })
     .eq('author_id', userData.user.id)
-    .eq('status', 'pending')
+    .in('status', [...PENDING_COMMENT_STATUSES])
 
   if (error) {
     throw error
@@ -167,9 +174,7 @@ export const submitComment = async (input: SubmitCommentInput): Promise<CommentR
   const pendingCount = await getMyPendingCommentCount()
 
   if (pendingCount >= MAX_PENDING_COMMENTS) {
-    throw new Error(
-      `You have ${MAX_PENDING_COMMENTS} comments awaiting review. Please wait for them to be moderated before adding more.`
-    )
+    throw new Error(PENDING_COMMENT_LIMIT_MESSAGE)
   }
 
   if (input.parentId) {
@@ -204,6 +209,10 @@ export const submitComment = async (input: SubmitCommentInput): Promise<CommentR
   const { data, error } = await supabase.from('comments').insert(row).select('*').single()
 
   if (error) {
+    if (getErrorMessage(error)?.includes('comments awaiting review or clarification')) {
+      throw new Error(PENDING_COMMENT_LIMIT_MESSAGE)
+    }
+
     throw error
   }
 
@@ -382,6 +391,7 @@ export const getUserFlag = async (
     .eq('reporter_id', userData.user.id)
     .eq('target_type', targetType)
     .eq('target_id', targetId)
+    .eq('status', 'open')
     .maybeSingle()
 
   if (error) {
