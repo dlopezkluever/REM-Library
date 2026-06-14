@@ -52,3 +52,15 @@ export const SheetTitle = ({
     />
   )
 }
+
+export const SheetDescription = ({
+  className,
+  ...props
+}: React.ComponentPropsWithoutRef<typeof DialogPrimitive.Description>) => {
+  return (
+    <DialogPrimitive.Description
+      className={cn('font-body text-sm text-[#666]', className)}
+      {...props}
+    />
+  )
+}

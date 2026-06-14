@@ -35,6 +35,8 @@ export interface CommunitySignalSummary {
 
 export interface AdminCommentModerationRow extends AdminCommentRow {
   author: Pick<Tables<'profiles'>, 'display_name' | 'email' | 'role'> | null
+  targetClaim?: Pick<Tables<'claims'>, 'id' | 'statement'> | null
+  targetEntity?: Pick<Tables<'entities'>, 'id' | 'name' | 'slug'> | null
 }
 
 export interface AdminFlagModerationRow extends AdminFlagRow {
@@ -188,7 +190,7 @@ export interface ReviewSourceSummary {
   validationFailedCount: number
 }
 
-export type ReviewQueueSort = 'oldest' | 'newest' | 'most_flagged' | 'highest_net_votes'
+export type ReviewQueueSort = 'oldest' | 'newest' | 'most_flagged' | 'highest_community_score'
 
 export interface SaveEntityReviewInput {
   aliases: string[]
@@ -883,8 +885,46 @@ export const getPendingComments = async (
     throw error
   }
 
+  const comments = (data ?? []) as unknown as AdminCommentModerationRow[]
+  const entityTargetIds = uniqueIds(
+    comments
+      .filter((comment) => comment.target_type === 'entity')
+      .map((comment) => comment.target_id)
+  )
+  const claimTargetIds = uniqueIds(
+    comments
+      .filter((comment) => comment.target_type === 'claim')
+      .map((comment) => comment.target_id)
+  )
+
+  const [entitiesResult, claimsResult] = await Promise.all([
+    entityTargetIds.length > 0
+      ? supabase.from('entities').select('id, name, slug').in('id', entityTargetIds)
+      : Promise.resolve({ data: [], error: null }),
+    claimTargetIds.length > 0
+      ? supabase.from('claims').select('id, statement').in('id', claimTargetIds)
+      : Promise.resolve({ data: [], error: null }),
+  ])
+
+  if (entitiesResult.error) {
+    throw entitiesResult.error
+  }
+
+  if (claimsResult.error) {
+    throw claimsResult.error
+  }
+
+  const entitiesById = new Map((entitiesResult.data ?? []).map((entity) => [entity.id, entity]))
+  const claimsById = new Map((claimsResult.data ?? []).map((claim) => [claim.id, claim]))
+
   return {
-    comments: (data ?? []) as unknown as AdminCommentModerationRow[],
+    comments: comments.map((comment) => ({
+      ...comment,
+      targetClaim:
+        comment.target_type === 'claim' ? (claimsById.get(comment.target_id) ?? null) : null,
+      targetEntity:
+        comment.target_type === 'entity' ? (entitiesById.get(comment.target_id) ?? null) : null,
+    })),
     page,
     pageSize: adminCommentPageSize,
     totalCount: requireCount(count),
@@ -895,7 +935,7 @@ const moderateComment = async (
   commentId: string,
   status: AdminCommentRow['status'],
   note: string | null = null
-) => {
+): Promise<AdminCommentModerationRow> => {
   return withReviewerFields(
     supabase
       .from('comments')
@@ -906,9 +946,9 @@ const moderateComment = async (
         status,
       })
       .eq('id', commentId)
-      .select('*')
+      .select('*, author:profiles!comments_author_id_fkey(display_name,email,role)')
       .single()
-  )
+  ) as Promise<AdminCommentModerationRow>
 }
 
 export const approveComment = async (commentId: string) => {
@@ -924,6 +964,10 @@ export const requestCommentClarification = async (commentId: string, note: strin
 
   if (!trimmed) {
     throw new Error('Clarification note is required.')
+  }
+
+  if (trimmed.length > 1000) {
+    throw new Error('Clarification note is limited to 1000 characters.')
   }
 
   return moderateComment(commentId, 'needs_clarification', trimmed)
@@ -995,9 +1039,9 @@ const moderateFlag = async (flagId: string, status: Extract<AdminFlagRow['status
         status,
       })
       .eq('id', flagId)
-      .select('*')
+      .select('*, reporter:profiles!content_flags_reporter_id_fkey(display_name,email)')
       .single()
-  )
+  ) as Promise<AdminFlagModerationRow>
 }
 
 export const resolveFlag = async (flagId: string) => {
@@ -1518,11 +1562,7 @@ export const createEntityImagePath = (entityId: string, file: File, kind: 'hero'
   return `${entityId}/${kind}-${Date.now()}.${safeExtension}`
 }
 
-export const uploadEntityImage = async (
-  entityId: string,
-  file: File,
-  kind: 'hero' | 'profile'
-) => {
+export const uploadEntityImage = async (entityId: string, file: File, kind: 'hero' | 'profile') => {
   const path = createEntityImagePath(entityId, file, kind)
   const { error } = await supabase.storage.from(entityImagesBucket).upload(path, file, {
     cacheControl: '3600',
@@ -1810,35 +1850,19 @@ export const getPendingReviewSourceSummaries = async (
   page = 0,
   sort: ReviewQueueSort = 'oldest'
 ): Promise<ReviewSourceSummary[]> => {
-  const fetchLimit = sort === 'oldest' ? reviewQueuePageSize : 500
   const { data, error } = await supabase.rpc('get_pending_review_source_summaries', {
-    page_limit: fetchLimit,
-    page_offset: sort === 'oldest' ? page * reviewQueuePageSize : 0,
+    page_limit: reviewQueuePageSize,
+    page_offset: page * reviewQueuePageSize,
+    sort_mode: sort,
   })
 
   if (error) {
     throw error
   }
 
-  const { data: signalRows, error: signalError } = await supabase.rpc('get_review_queue_signals')
-
-  if (signalError) {
-    throw signalError
-  }
-
-  const signalsBySourceId = new Map(
-    (signalRows ?? []).map((signal) => [
-      signal.source_id,
-      {
-        communityScore: signal.community_score ?? 0,
-        flagCount: signal.flag_count ?? 0,
-      },
-    ])
-  )
-
-  const summaries = data.map((row) => ({
-    communityScore: signalsBySourceId.get(row.source_id)?.communityScore ?? 0,
-    flagCount: signalsBySourceId.get(row.source_id)?.flagCount ?? 0,
+  return data.map((row) => ({
+    communityScore: row.community_score ?? 0,
+    flagCount: row.flag_count ?? 0,
     oldestExtractionAt: row.oldest_extraction_at,
     pendingExtractionCount: row.pending_extraction_count,
     pendingItemCount: row.pending_item_count,
@@ -1851,39 +1875,6 @@ export const getPendingReviewSourceSummaries = async (
     },
     validationFailedCount: row.validation_failed_count,
   }))
-
-  const sortedSummaries = [...summaries].sort((first, second) => {
-    if (sort === 'newest') {
-      return (
-        new Date(second.oldestExtractionAt).getTime() -
-        new Date(first.oldestExtractionAt).getTime()
-      )
-    }
-
-    if (sort === 'most_flagged') {
-      const flagDelta = second.flagCount - first.flagCount
-
-      if (flagDelta !== 0) {
-        return flagDelta
-      }
-    }
-
-    if (sort === 'highest_net_votes') {
-      const scoreDelta = second.communityScore - first.communityScore
-
-      if (scoreDelta !== 0) {
-        return scoreDelta
-      }
-    }
-
-    return (
-      new Date(first.oldestExtractionAt).getTime() - new Date(second.oldestExtractionAt).getTime()
-    )
-  })
-
-  return sort === 'oldest'
-    ? sortedSummaries
-    : sortedSummaries.slice(page * reviewQueuePageSize, page * reviewQueuePageSize + reviewQueuePageSize)
 }
 
 export const getPendingExtractionReviewSource = async (
