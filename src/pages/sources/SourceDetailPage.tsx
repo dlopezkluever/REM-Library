@@ -2,6 +2,9 @@ import { useEffect, useRef, type RefObject } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ExternalLink } from 'lucide-react'
+import { CommentSection } from '@/components/community/CommentSection'
+import { FlagButton } from '@/components/community/FlagButton'
+import { VoteWidget } from '@/components/community/VoteWidget'
 import { EntityChip } from '@/components/entity/EntityChip'
 import { CopyLinkButton } from '@/components/common/CopyLinkButton'
 import { TranscriptViewer } from '@/components/source/TranscriptViewer'
@@ -168,8 +171,12 @@ export default function SourceDetailPage() {
               {source.description}
             </p>
           ) : null}
-          <div className="mt-5">
+          <div className="mt-5 flex flex-wrap items-center gap-2">
             <CopyLinkButton />
+            <FlagButton targetId={source.id} targetType="source" />
+          </div>
+          <div className="mt-4">
+            <VoteWidget targetId={source.id} targetType="source" />
           </div>
         </header>
 
@@ -227,6 +234,8 @@ export default function SourceDetailPage() {
             />
           ) : null}
         </section>
+
+        <CommentSection targetId={source.id} targetType="source" />
       </article>
 
       <aside>

@@ -20,6 +20,7 @@ import AdminSourceImpactPage from '@/pages/admin/AdminSourceImpactPage'
 import AdminUrlCrawlPage from '@/pages/admin/AdminUrlCrawlPage'
 import AdminReviewQueuePage from '@/pages/admin/AdminReviewQueuePage'
 import AdminSuggestionManagerPage from '@/pages/admin/AdminSuggestionManagerPage'
+import AdminCommentQueuePage from '@/pages/admin/AdminCommentQueuePage'
 import AdminEntityManagerPage from '@/pages/admin/AdminEntityManagerPage'
 import AdminEntityNewPage from '@/pages/admin/AdminEntityNewPage'
 import AdminClaimManagerPage from '@/pages/admin/AdminClaimManagerPage'
@@ -113,6 +114,7 @@ export const router = createBrowserRouter([
           { path: '/admin/sources/:id/impact', element: <AdminSourceImpactPage /> },
           { path: '/admin/review', element: <AdminReviewQueuePage /> },
           { path: ROUTES.ADMIN_SUGGESTIONS, element: <AdminSuggestionManagerPage /> },
+          { path: ROUTES.ADMIN_COMMENTS, element: <AdminCommentQueuePage /> },
           { path: '/admin/entities', element: <AdminEntityManagerPage /> },
           { path: ROUTES.ADMIN_ENTITY_NEW, element: <AdminEntityNewPage /> },
           { path: '/admin/claims', element: <AdminClaimManagerPage /> },
