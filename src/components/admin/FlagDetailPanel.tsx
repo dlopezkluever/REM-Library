@@ -16,8 +16,8 @@ import {
   resolveFlag,
   type AdminFlagModerationRow,
 } from '@/lib/api/admin'
-import type { FlagTargetType } from '@/lib/api/community'
-import { formatEnumLabel } from '@/lib/format'
+import { getTargetAdminQueryKeys, type FlagTargetType } from '@/lib/api/community'
+import { formatEnumLabel, getErrorMessage } from '@/lib/format'
 
 interface FlagDetailPanelProps {
   open: boolean
@@ -25,25 +25,6 @@ interface FlagDetailPanelProps {
   targetLabel: string
   targetType: FlagTargetType
   onOpenChange: (open: boolean) => void
-}
-
-const getErrorMessage = (error: unknown) =>
-  error instanceof Error ? error.message : 'Flag moderation failed.'
-
-const getTargetAdminQueryKeys = (targetType: FlagTargetType) => {
-  if (targetType === 'claim') {
-    return [['admin', 'claims'] as const]
-  }
-
-  if (targetType === 'entity') {
-    return [['admin', 'entities'] as const]
-  }
-
-  if (targetType === 'source') {
-    return [['admin', 'source-list'] as const, ['admin', 'sources'] as const]
-  }
-
-  return [['admin', 'comments'] as const]
 }
 
 export const FlagDetailPanel = ({
