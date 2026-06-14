@@ -59,6 +59,7 @@ export const CommentForm = ({
         </div>
       ) : null}
       <textarea
+        aria-label="Community note"
         className="min-h-28 w-full resize-y rounded border border-0.5 border-black/15 bg-stone px-3 py-2 font-body text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-verdigris"
         maxLength={MAX_COMMENT_LENGTH}
         placeholder="Add a community note"
@@ -67,7 +68,7 @@ export const CommentForm = ({
       />
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
         <p className="font-body text-xs text-[#777]">
-          {trimmedLength}/{MAX_COMMENT_LENGTH}
+          {body.length}/{MAX_COMMENT_LENGTH}
         </p>
         <Button
           disabled={
