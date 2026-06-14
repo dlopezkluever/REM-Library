@@ -77,3 +77,6 @@ export const truncateText = (value: string | null, maxLength: number) => {
 }
 
 export const formatEnumLabel = (value: string) => value.replace(/_/g, ' ')
+
+export const getErrorMessage = (error: unknown, fallback = 'An unexpected error occurred.') =>
+  error instanceof Error ? error.message : fallback

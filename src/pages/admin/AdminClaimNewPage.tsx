@@ -16,9 +16,7 @@ import {
   type ContentStatus,
   type InterpretationFrame,
 } from '@/lib/api/admin'
-
-const getErrorMessage = (error: unknown) =>
-  error instanceof Error ? error.message : 'Claim could not be created.'
+import { getErrorMessage } from '@/lib/format'
 
 export default function AdminClaimNewPage() {
   const navigate = useNavigate()
