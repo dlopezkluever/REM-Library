@@ -214,7 +214,7 @@ export const updateOwnPendingComment = async (
   commentId: string,
   body: string
 ): Promise<CommentRow> => {
-  const user = await requireUser()
+  await requireUser()
   const trimmed = body.trim()
 
   if (trimmed.length < MIN_COMMENT_LENGTH || trimmed.length > MAX_COMMENT_LENGTH) {
@@ -223,14 +223,10 @@ export const updateOwnPendingComment = async (
     )
   }
 
-  const { data, error } = await supabase
-    .from('comments')
-    .update({ body: trimmed })
-    .eq('id', commentId)
-    .eq('author_id', user.id)
-    .eq('status', 'pending')
-    .select('*')
-    .single()
+  const { data, error } = await supabase.rpc('update_own_comment_body', {
+    p_body: trimmed,
+    p_comment_id: commentId,
+  })
 
   if (error) {
     throw error

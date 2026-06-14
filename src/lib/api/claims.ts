@@ -97,20 +97,70 @@ export const getClaimGraph = async (claimId: string): Promise<ClaimGraph> => {
     }
   }
 
-  const cappedDirectEntityIds = directEntityIds.slice(0, 10)
-  const directEntitySet = new Set(cappedDirectEntityIds)
-  const relationshipFilter = `from_entity_id.in.(${cappedDirectEntityIds.join(',')}),to_entity_id.in.(${cappedDirectEntityIds.join(',')})`
-  const { data: relationships, error: relationshipsError } = await supabase
+  const directRelationshipFilter = `from_entity_id.in.(${directEntityIds.join(',')}),to_entity_id.in.(${directEntityIds.join(',')})`
+  const { data: directRelationships, error: directRelationshipsError } = await supabase
     .from('relationships')
     .select('*')
     .eq('status', 'active')
-    .or(relationshipFilter)
+    .or(directRelationshipFilter)
     .order('weight', { ascending: false })
-    .limit(80)
+    .limit(300)
 
-  if (relationshipsError) {
-    throw relationshipsError
+  if (directRelationshipsError) {
+    throw directRelationshipsError
   }
+
+  const { data: directEntities, error: directEntitiesError } = await supabase
+    .from('entities')
+    .select('id, name')
+    .in('id', directEntityIds)
+    .eq('status', 'published')
+
+  if (directEntitiesError) {
+    throw directEntitiesError
+  }
+
+  const directEntityNames = new Map(directEntities.map((entity) => [entity.id, entity.name]))
+  const directEntityWeights = new Map(directEntityIds.map((entityId) => [entityId, 0]))
+
+  directRelationships.forEach((relationship) => {
+    if (directEntityWeights.has(relationship.from_entity_id)) {
+      directEntityWeights.set(
+        relationship.from_entity_id,
+        (directEntityWeights.get(relationship.from_entity_id) ?? 0) + relationship.weight
+      )
+    }
+
+    if (directEntityWeights.has(relationship.to_entity_id)) {
+      directEntityWeights.set(
+        relationship.to_entity_id,
+        (directEntityWeights.get(relationship.to_entity_id) ?? 0) + relationship.weight
+      )
+    }
+  })
+
+  const cappedDirectEntityIds = [...directEntityIds]
+    .sort((firstId, secondId) => {
+      const weightDelta =
+        (directEntityWeights.get(secondId) ?? 0) - (directEntityWeights.get(firstId) ?? 0)
+
+      if (weightDelta !== 0) {
+        return weightDelta
+      }
+
+      return (directEntityNames.get(firstId) ?? firstId).localeCompare(
+        directEntityNames.get(secondId) ?? secondId
+      )
+    })
+    .slice(0, 10)
+  const directEntitySet = new Set(cappedDirectEntityIds)
+  const relationships = directRelationships
+    .filter(
+      (relationship) =>
+        directEntitySet.has(relationship.from_entity_id) ||
+        directEntitySet.has(relationship.to_entity_id)
+    )
+    .slice(0, 80)
 
   const neighborIds = relationships
     .flatMap((relationship) => [relationship.from_entity_id, relationship.to_entity_id])
