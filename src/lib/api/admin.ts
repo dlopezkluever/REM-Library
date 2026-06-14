@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase/client'
 import { normalizeSourceUrlForDedup } from '@/lib/sourceUrl'
+import type { CommunityTargetType, FlagTargetType } from '@/lib/api/community'
 import type { Enums, Json, Tables, TablesInsert, TablesUpdate } from '@/types/database'
 
 export type AdminSourceRow = Tables<'sources'>
@@ -17,11 +18,51 @@ export type AdminClaimRow = Tables<'claims'>
 export type AdminExtractionRow = Tables<'extractions'>
 export type AdminChunkRow = Tables<'chunks'>
 export type AdminRelationshipRow = Tables<'relationships'>
+export type AdminCommentRow = Tables<'comments'>
+export type AdminFlagRow = Tables<'content_flags'>
 export type RelationshipStatus = 'active' | 'archived'
 export type AdminSuggestionRow = Tables<'suggestions'> & {
   submitter?: Pick<Tables<'profiles'>, 'display_name' | 'email'> | null
   targetClaim?: Pick<Tables<'claims'>, 'id' | 'statement'> | null
   targetEntity?: Pick<Tables<'entities'>, 'id' | 'name' | 'slug'> | null
+}
+
+export interface CommunitySignalSummary {
+  communityScore: number
+  flagCount: number
+  pendingCommentCount: number
+}
+
+export interface AdminCommentModerationRow extends AdminCommentRow {
+  author: Pick<Tables<'profiles'>, 'display_name' | 'email' | 'role'> | null
+}
+
+export interface AdminFlagModerationRow extends AdminFlagRow {
+  reporter: Pick<Tables<'profiles'>, 'display_name' | 'email'> | null
+}
+
+export interface AdminCommentPage {
+  comments: AdminCommentModerationRow[]
+  page: number
+  pageSize: number
+  totalCount: number
+}
+
+export interface AdminFlagPage {
+  flags: AdminFlagModerationRow[]
+  page: number
+  pageSize: number
+  totalCount: number
+}
+
+export interface AdminCommentFilters {
+  status?: AdminCommentRow['status'] | 'all'
+  targetType?: CommunityTargetType | 'all'
+}
+
+export interface AdminFlagFilters {
+  status?: AdminFlagRow['status'] | 'all'
+  targetType?: FlagTargetType | 'all'
 }
 
 export interface AdminDashboardCounts {
@@ -138,12 +179,16 @@ export interface ReviewSourceGroup {
 }
 
 export interface ReviewSourceSummary {
+  communityScore: number
+  flagCount: number
   oldestExtractionAt: string
   pendingExtractionCount: number
   pendingItemCount: number
   source: Pick<AdminSourceRow, 'format' | 'id' | 'status' | 'tier' | 'title'>
   validationFailedCount: number
 }
+
+export type ReviewQueueSort = 'oldest' | 'newest' | 'most_flagged' | 'highest_net_votes'
 
 export interface SaveEntityReviewInput {
   aliases: string[]
@@ -224,13 +269,15 @@ export interface ReviewActionResult {
 }
 
 export interface AdminEntityPage {
-  entities: AdminEntityRow[]
+  entities: AdminEntityListRow[]
   page: number
   pageSize: number
   totalCount: number
 }
 
-export interface AdminClaimListRow extends AdminClaimRow {
+export interface AdminEntityListRow extends AdminEntityRow, CommunitySignalSummary {}
+
+export interface AdminClaimListRow extends AdminClaimRow, CommunitySignalSummary {
   entityNames: string[]
   evidenceCount: number
 }
@@ -355,6 +402,8 @@ const adminRelationshipPageSize = 50
 const adminRelationshipMaxPageSize = 100
 const confidenceComputationBatchSize = 200
 const reviewQueuePageSize = 50
+const adminCommentPageSize = 50
+const adminFlagPageSize = 50
 const sourceFileBucket = 'source-files'
 const entityImagesBucket = 'entity-images'
 
@@ -687,6 +736,276 @@ const insertAdminAuditEvent = async (
   if (error) {
     throw error
   }
+}
+
+const getSignalSummariesForTargets = async (
+  targetType: CommunityTargetType,
+  targetIds: string[]
+): Promise<Map<string, CommunitySignalSummary>> => {
+  const uniqueTargetIds = uniqueIds(targetIds)
+  const summaries = new Map<string, CommunitySignalSummary>()
+
+  uniqueTargetIds.forEach((targetId) => {
+    summaries.set(targetId, {
+      communityScore: 0,
+      flagCount: 0,
+      pendingCommentCount: 0,
+    })
+  })
+
+  if (uniqueTargetIds.length === 0) {
+    return summaries
+  }
+
+  const [scoreResult, flagResult, commentResult] = await Promise.all([
+    supabase
+      .from('community_scores')
+      .select('target_id, community_score')
+      .eq('target_type', targetType)
+      .in('target_id', uniqueTargetIds),
+    supabase
+      .from('open_flag_counts')
+      .select('target_id, flag_count')
+      .eq('target_type', targetType)
+      .in('target_id', uniqueTargetIds),
+    supabase
+      .from('comments')
+      .select('target_id')
+      .eq('target_type', targetType)
+      .eq('status', 'pending')
+      .in('target_id', uniqueTargetIds),
+  ])
+
+  if (scoreResult.error) {
+    throw scoreResult.error
+  }
+
+  if (flagResult.error) {
+    throw flagResult.error
+  }
+
+  if (commentResult.error) {
+    throw commentResult.error
+  }
+
+  scoreResult.data.forEach((row) => {
+    if (!row.target_id) {
+      return
+    }
+
+    const summary = summaries.get(row.target_id)
+
+    if (summary) {
+      summary.communityScore = row.community_score ?? 0
+    }
+  })
+
+  flagResult.data.forEach((row) => {
+    if (!row.target_id) {
+      return
+    }
+
+    const summary = summaries.get(row.target_id)
+
+    if (summary) {
+      summary.flagCount = row.flag_count ?? 0
+    }
+  })
+
+  commentResult.data.forEach((row) => {
+    const summary = summaries.get(row.target_id)
+
+    if (summary) {
+      summary.pendingCommentCount += 1
+    }
+  })
+
+  return summaries
+}
+
+export const getSignalSummaryForTarget = async (
+  targetType: CommunityTargetType,
+  targetId: string
+): Promise<CommunitySignalSummary> => {
+  const summaries = await getSignalSummariesForTargets(targetType, [targetId])
+
+  return (
+    summaries.get(targetId) ?? {
+      communityScore: 0,
+      flagCount: 0,
+      pendingCommentCount: 0,
+    }
+  )
+}
+
+const withReviewerFields = async <T extends { id: string }>(
+  update: PromiseLike<{ data: T | null; error: unknown }>
+) => {
+  const { data, error } = await update
+
+  if (error) {
+    throw error
+  }
+
+  if (!data) {
+    throw new Error('Moderation update returned no row.')
+  }
+
+  return data
+}
+
+export const getPendingComments = async (
+  page = 0,
+  filters: AdminCommentFilters = {}
+): Promise<AdminCommentPage> => {
+  const pageOffset = Math.max(0, page) * adminCommentPageSize
+  let query = supabase
+    .from('comments')
+    .select('*, author:profiles!comments_author_id_fkey(display_name,email,role)', {
+      count: 'exact',
+    })
+    .order('created_at', { ascending: true })
+    .range(pageOffset, pageOffset + adminCommentPageSize - 1)
+
+  if (filters.status && filters.status !== 'all') {
+    query = query.eq('status', filters.status)
+  } else if (!filters.status) {
+    query = query.eq('status', 'pending')
+  }
+
+  if (filters.targetType && filters.targetType !== 'all') {
+    query = query.eq('target_type', filters.targetType)
+  }
+
+  const { data, error, count } = await query
+
+  if (error) {
+    throw error
+  }
+
+  return {
+    comments: (data ?? []) as unknown as AdminCommentModerationRow[],
+    page,
+    pageSize: adminCommentPageSize,
+    totalCount: requireCount(count),
+  }
+}
+
+const moderateComment = async (
+  commentId: string,
+  status: AdminCommentRow['status'],
+  note: string | null = null
+) => {
+  return withReviewerFields(
+    supabase
+      .from('comments')
+      .update({
+        reviewed_at: new Date().toISOString(),
+        reviewer_id: await getCurrentAdminUserId(),
+        reviewer_note: note,
+        status,
+      })
+      .eq('id', commentId)
+      .select('*')
+      .single()
+  )
+}
+
+export const approveComment = async (commentId: string) => {
+  return moderateComment(commentId, 'approved')
+}
+
+export const rejectComment = async (commentId: string) => {
+  return moderateComment(commentId, 'rejected')
+}
+
+export const requestCommentClarification = async (commentId: string, note: string) => {
+  const trimmed = note.trim()
+
+  if (!trimmed) {
+    throw new Error('Clarification note is required.')
+  }
+
+  return moderateComment(commentId, 'needs_clarification', trimmed)
+}
+
+export const getOpenFlags = async (
+  page = 0,
+  filters: AdminFlagFilters = {}
+): Promise<AdminFlagPage> => {
+  const pageOffset = Math.max(0, page) * adminFlagPageSize
+  let query = supabase
+    .from('content_flags')
+    .select('*, reporter:profiles!content_flags_reporter_id_fkey(display_name,email)', {
+      count: 'exact',
+    })
+    .order('created_at', { ascending: true })
+    .range(pageOffset, pageOffset + adminFlagPageSize - 1)
+
+  if (filters.status && filters.status !== 'all') {
+    query = query.eq('status', filters.status)
+  } else if (!filters.status) {
+    query = query.eq('status', 'open')
+  }
+
+  if (filters.targetType && filters.targetType !== 'all') {
+    query = query.eq('target_type', filters.targetType)
+  }
+
+  const { data, error, count } = await query
+
+  if (error) {
+    throw error
+  }
+
+  return {
+    flags: (data ?? []) as unknown as AdminFlagModerationRow[],
+    page,
+    pageSize: adminFlagPageSize,
+    totalCount: requireCount(count),
+  }
+}
+
+export const getOpenFlagsForTarget = async (
+  targetType: FlagTargetType,
+  targetId: string
+): Promise<AdminFlagModerationRow[]> => {
+  const { data, error } = await supabase
+    .from('content_flags')
+    .select('*, reporter:profiles!content_flags_reporter_id_fkey(display_name,email)')
+    .eq('target_type', targetType)
+    .eq('target_id', targetId)
+    .eq('status', 'open')
+    .order('created_at', { ascending: true })
+
+  if (error) {
+    throw error
+  }
+
+  return (data ?? []) as unknown as AdminFlagModerationRow[]
+}
+
+const moderateFlag = async (flagId: string, status: Extract<AdminFlagRow['status'], string>) => {
+  return withReviewerFields(
+    supabase
+      .from('content_flags')
+      .update({
+        resolved_at: new Date().toISOString(),
+        resolved_by: await getCurrentAdminUserId(),
+        status,
+      })
+      .eq('id', flagId)
+      .select('*')
+      .single()
+  )
+}
+
+export const resolveFlag = async (flagId: string) => {
+  return moderateFlag(flagId, 'resolved')
+}
+
+export const dismissFlag = async (flagId: string) => {
+  return moderateFlag(flagId, 'dismissed')
 }
 
 export const createAdminSource = async (input: CreateAdminSourceInput) => {
@@ -1487,17 +1806,39 @@ const getValidationFailed = (extractionData: Json) => {
   return isRecord(extractionData) && extractionData.validation_failed === true
 }
 
-export const getPendingReviewSourceSummaries = async (page = 0): Promise<ReviewSourceSummary[]> => {
+export const getPendingReviewSourceSummaries = async (
+  page = 0,
+  sort: ReviewQueueSort = 'oldest'
+): Promise<ReviewSourceSummary[]> => {
+  const fetchLimit = sort === 'oldest' ? reviewQueuePageSize : 500
   const { data, error } = await supabase.rpc('get_pending_review_source_summaries', {
-    page_limit: reviewQueuePageSize,
-    page_offset: page * reviewQueuePageSize,
+    page_limit: fetchLimit,
+    page_offset: sort === 'oldest' ? page * reviewQueuePageSize : 0,
   })
 
   if (error) {
     throw error
   }
 
-  return data.map((row) => ({
+  const { data: signalRows, error: signalError } = await supabase.rpc('get_review_queue_signals')
+
+  if (signalError) {
+    throw signalError
+  }
+
+  const signalsBySourceId = new Map(
+    (signalRows ?? []).map((signal) => [
+      signal.source_id,
+      {
+        communityScore: signal.community_score ?? 0,
+        flagCount: signal.flag_count ?? 0,
+      },
+    ])
+  )
+
+  const summaries = data.map((row) => ({
+    communityScore: signalsBySourceId.get(row.source_id)?.communityScore ?? 0,
+    flagCount: signalsBySourceId.get(row.source_id)?.flagCount ?? 0,
     oldestExtractionAt: row.oldest_extraction_at,
     pendingExtractionCount: row.pending_extraction_count,
     pendingItemCount: row.pending_item_count,
@@ -1510,6 +1851,39 @@ export const getPendingReviewSourceSummaries = async (page = 0): Promise<ReviewS
     },
     validationFailedCount: row.validation_failed_count,
   }))
+
+  const sortedSummaries = [...summaries].sort((first, second) => {
+    if (sort === 'newest') {
+      return (
+        new Date(second.oldestExtractionAt).getTime() -
+        new Date(first.oldestExtractionAt).getTime()
+      )
+    }
+
+    if (sort === 'most_flagged') {
+      const flagDelta = second.flagCount - first.flagCount
+
+      if (flagDelta !== 0) {
+        return flagDelta
+      }
+    }
+
+    if (sort === 'highest_net_votes') {
+      const scoreDelta = second.communityScore - first.communityScore
+
+      if (scoreDelta !== 0) {
+        return scoreDelta
+      }
+    }
+
+    return (
+      new Date(first.oldestExtractionAt).getTime() - new Date(second.oldestExtractionAt).getTime()
+    )
+  })
+
+  return sort === 'oldest'
+    ? sortedSummaries
+    : sortedSummaries.slice(page * reviewQueuePageSize, page * reviewQueuePageSize + reviewQueuePageSize)
 }
 
 export const getPendingExtractionReviewSource = async (
@@ -1619,9 +1993,15 @@ export const getAdminEntitiesPage = async ({
     throw error
   }
 
+  const signalSummaries = await getSignalSummariesForTargets(
+    'entity',
+    data.map((row) => row.id)
+  )
+
   return {
     entities: data.map((row) => ({
       aliases: row.aliases,
+      communityScore: signalSummaries.get(row.id)?.communityScore ?? 0,
       confidence_override: row.confidence_override,
       confidence_score: row.confidence_score,
       created_at: row.created_at,
@@ -1637,6 +2017,8 @@ export const getAdminEntitiesPage = async ({
       position_y: row.position_y,
       slug: row.slug,
       status: row.status,
+      flagCount: signalSummaries.get(row.id)?.flagCount ?? 0,
+      pendingCommentCount: signalSummaries.get(row.id)?.pendingCommentCount ?? 0,
       type: row.type,
       updated_at: row.updated_at,
     })),
@@ -1978,9 +2360,15 @@ export const getAdminClaimsPage = async ({
     throw error
   }
 
+  const signalSummaries = await getSignalSummariesForTargets(
+    'claim',
+    data.map((row) => row.id)
+  )
+
   return {
     claims: data.map((row) => ({
       author_id: row.author_id,
+      communityScore: signalSummaries.get(row.id)?.communityScore ?? 0,
       confidence_override: row.confidence_override,
       confidence_score: row.confidence_score,
       created_at: row.created_at,
@@ -1990,6 +2378,8 @@ export const getAdminClaimsPage = async ({
       id: row.id,
       interpretation_frame: row.interpretation_frame,
       is_canonical: row.is_canonical,
+      flagCount: signalSummaries.get(row.id)?.flagCount ?? 0,
+      pendingCommentCount: signalSummaries.get(row.id)?.pendingCommentCount ?? 0,
       statement: row.statement,
       status: row.status,
       updated_at: row.updated_at,
