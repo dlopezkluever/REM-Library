@@ -98,30 +98,32 @@ export const getClaimGraph = async (claimId: string): Promise<ClaimGraph> => {
   }
 
   const directRelationshipFilter = `from_entity_id.in.(${directEntityIds.join(',')}),to_entity_id.in.(${directEntityIds.join(',')})`
-  const { data: directRelationships, error: directRelationshipsError } = await supabase
-    .from('relationships')
-    .select('*')
-    .eq('status', 'active')
-    .or(directRelationshipFilter)
-    .order('weight', { ascending: false })
-    .limit(300)
+
+  const [
+    { data: directRelationships, error: directRelationshipsError },
+    { data: directEntities, error: directEntitiesError },
+  ] = await Promise.all([
+    supabase
+      .from('relationships')
+      .select('*')
+      .eq('status', 'active')
+      .or(directRelationshipFilter)
+      .order('weight', { ascending: false })
+      .limit(300),
+    supabase.from('entities').select('id, name').in('id', directEntityIds).eq('status', 'published'),
+  ])
 
   if (directRelationshipsError) {
     throw directRelationshipsError
   }
 
-  const { data: directEntities, error: directEntitiesError } = await supabase
-    .from('entities')
-    .select('id, name')
-    .in('id', directEntityIds)
-    .eq('status', 'published')
-
   if (directEntitiesError) {
     throw directEntitiesError
   }
 
+  const publishedDirectEntityIds = directEntities.map((entity) => entity.id)
   const directEntityNames = new Map(directEntities.map((entity) => [entity.id, entity.name]))
-  const directEntityWeights = new Map(directEntityIds.map((entityId) => [entityId, 0]))
+  const directEntityWeights = new Map(publishedDirectEntityIds.map((entityId) => [entityId, 0]))
 
   directRelationships.forEach((relationship) => {
     if (directEntityWeights.has(relationship.from_entity_id)) {
@@ -139,7 +141,7 @@ export const getClaimGraph = async (claimId: string): Promise<ClaimGraph> => {
     }
   })
 
-  const cappedDirectEntityIds = [...directEntityIds]
+  const cappedDirectEntityIds = [...publishedDirectEntityIds]
     .sort((firstId, secondId) => {
       const weightDelta =
         (directEntityWeights.get(secondId) ?? 0) - (directEntityWeights.get(firstId) ?? 0)
@@ -182,7 +184,7 @@ export const getClaimGraph = async (claimId: string): Promise<ClaimGraph> => {
   const entitySet = new Set(entities.map((entity) => entity.id))
 
   return {
-    directEntityCount: directEntityIds.length,
+    directEntityCount: publishedDirectEntityIds.length,
     entities: entities.map((entity) => ({
       ...entity,
       isDirect: directEntitySet.has(entity.id),
@@ -191,7 +193,10 @@ export const getClaimGraph = async (claimId: string): Promise<ClaimGraph> => {
       (relationship) =>
         entitySet.has(relationship.from_entity_id) && entitySet.has(relationship.to_entity_id)
     ),
-    truncatedDirectEntityCount: Math.max(0, directEntityIds.length - cappedDirectEntityIds.length),
+    truncatedDirectEntityCount: Math.max(
+      0,
+      publishedDirectEntityIds.length - cappedDirectEntityIds.length
+    ),
   }
 }
 

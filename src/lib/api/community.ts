@@ -85,6 +85,22 @@ const getErrorMessage = (error: unknown) =>
     ? error.message
     : null
 
+export const getTargetAdminQueryKeys = (targetType: FlagTargetType) => {
+  if (targetType === 'claim') {
+    return [['admin', 'claims'] as const]
+  }
+
+  if (targetType === 'entity') {
+    return [['admin', 'entities'] as const]
+  }
+
+  if (targetType === 'source') {
+    return [['admin', 'source-list'] as const, ['admin', 'sources'] as const]
+  }
+
+  return [['admin', 'comments'] as const]
+}
+
 // ---------------------------------------------------------------------------
 // Comments
 // ---------------------------------------------------------------------------
@@ -182,10 +198,14 @@ export const submitComment = async (input: SubmitCommentInput): Promise<CommentR
       .from('comments')
       .select('parent_id, target_id, target_type')
       .eq('id', input.parentId)
-      .single()
+      .maybeSingle()
 
     if (parentError) {
       throw parentError
+    }
+
+    if (!parent) {
+      throw new Error('The parent comment is no longer available.')
     }
 
     if (parent.parent_id) {
