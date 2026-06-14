@@ -992,6 +992,14 @@ export type Database = {
         }
         Relationships: []
       }
+      pending_comment_counts: {
+        Row: {
+          pending_comment_count: number | null
+          target_id: string | null
+          target_type: CommunityTargetType | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       approve_suggestion: {
@@ -1013,13 +1021,16 @@ export type Database = {
           detailed_argument: string | null
           entity_names: string[]
           evidence_count: number
+          flag_count: number
           id: string
           interpretation_frame: Database['public']['Enums']['interpretation_frame'] | null
           is_canonical: boolean
+          pending_comment_count: number
           statement: string
           status: Database['public']['Enums']['content_status']
           total_count: number
           updated_at: string
+          community_score: number
         }[]
       }
       get_admin_content_stats: { Args: never; Returns: Json }
@@ -1064,8 +1075,12 @@ export type Database = {
           confidence_score: number
           created_at: string
           description: string | null
+          flag_count: number
+          hero_image_url: string | null
           id: string
+          image_url: string | null
           name: string
+          pending_comment_count: number
           position_x: number | null
           position_y: number | null
           slug: string
@@ -1073,6 +1088,7 @@ export type Database = {
           total_count: number
           type: Database['public']['Enums']['entity_type']
           updated_at: string
+          community_score: number
         }[]
       }
       get_admin_source_list_rows: {
