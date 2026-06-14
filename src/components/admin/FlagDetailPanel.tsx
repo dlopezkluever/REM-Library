@@ -2,7 +2,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Flag } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
 import {
   dismissFlag,
   getOpenFlagsForTarget,
@@ -20,6 +26,8 @@ interface FlagDetailPanelProps {
 }
 
 const reasonLabel = (reason: string) => reason.replace(/_/g, ' ')
+const getErrorMessage = (error: unknown) =>
+  error instanceof Error ? error.message : 'Flag moderation failed.'
 
 export const FlagDetailPanel = ({
   open,
@@ -36,14 +44,23 @@ export const FlagDetailPanel = ({
   })
   const flags = flagsQuery.data ?? []
   const moderateMutation = useMutation({
-    mutationFn: ({ action, flag }: { action: 'dismiss' | 'resolve'; flag: AdminFlagModerationRow }) =>
-      action === 'resolve' ? resolveFlag(flag.id) : dismissFlag(flag.id),
+    mutationFn: ({
+      action,
+      flag,
+    }: {
+      action: 'dismiss' | 'resolve'
+      flag: AdminFlagModerationRow
+    }) => (action === 'resolve' ? resolveFlag(flag.id) : dismissFlag(flag.id)),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['admin', 'flags'] })
-      await queryClient.invalidateQueries({ queryKey: ['admin', targetType === 'claim' ? 'claims' : 'entities'] })
+      await queryClient.invalidateQueries({
+        queryKey: ['admin', targetType === 'claim' ? 'claims' : 'entities'],
+      })
       await queryClient.invalidateQueries({ queryKey: ['admin', 'review-queue'] })
     },
   })
+  const pendingFlagId = moderateMutation.isPending ? moderateMutation.variables?.flag.id : null
+  const failedFlagId = moderateMutation.isError ? moderateMutation.variables?.flag.id : null
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -53,7 +70,7 @@ export const FlagDetailPanel = ({
             <Flag aria-hidden="true" className="h-4 w-4 text-terracotta" />
             Open Flags
           </SheetTitle>
-          <p className="pr-8 font-body text-sm text-[#666]">{targetLabel}</p>
+          <SheetDescription className="pr-8">{targetLabel}</SheetDescription>
         </SheetHeader>
 
         <div className="mt-5 space-y-3">
@@ -84,9 +101,14 @@ export const FlagDetailPanel = ({
                   {flag.notes}
                 </p>
               ) : null}
+              {failedFlagId === flag.id ? (
+                <p className="mt-3 font-body text-sm text-terracotta-dark">
+                  {getErrorMessage(moderateMutation.error)}
+                </p>
+              ) : null}
               <div className="mt-4 flex justify-end gap-2">
                 <Button
-                  disabled={moderateMutation.isPending}
+                  disabled={pendingFlagId === flag.id}
                   size="sm"
                   type="button"
                   variant="outline"
@@ -95,7 +117,7 @@ export const FlagDetailPanel = ({
                   Dismiss
                 </Button>
                 <Button
-                  disabled={moderateMutation.isPending}
+                  disabled={pendingFlagId === flag.id}
                   size="sm"
                   type="button"
                   onClick={() => moderateMutation.mutate({ action: 'resolve', flag })}

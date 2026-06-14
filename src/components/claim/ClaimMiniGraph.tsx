@@ -12,9 +12,10 @@ import type { GraphAttributes, GraphEdgeAttributes, GraphNodeAttributes } from '
 
 interface ClaimMiniGraphProps {
   claimId: string
+  height?: number
 }
 
-export const ClaimMiniGraph = ({ claimId }: ClaimMiniGraphProps) => {
+export const ClaimMiniGraph = ({ claimId, height = 300 }: ClaimMiniGraphProps) => {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const navigate = useNavigate()
   const [expanded, setExpanded] = useState(false)
@@ -43,7 +44,12 @@ export const ClaimMiniGraph = ({ claimId }: ClaimMiniGraphProps) => {
   }, [graphQuery.data])
 
   const directEntityIds = useMemo(
-    () => new Set((graphQuery.data?.entities ?? []).filter((entity) => entity.isDirect).map((entity) => entity.id)),
+    () =>
+      new Set(
+        (graphQuery.data?.entities ?? [])
+          .filter((entity) => entity.isDirect)
+          .map((entity) => entity.id)
+      ),
     [graphQuery.data?.entities]
   )
   const shouldCollapse =
@@ -84,10 +90,10 @@ export const ClaimMiniGraph = ({ claimId }: ClaimMiniGraphProps) => {
           const baseSize = confidenceToRadius(data.confidence)
 
           return {
-            color: hexToRgba(entityTypeToColor(data.entityType), direct ? 0.95 : 0.42),
-            forceLabel: direct,
+            color: hexToRgba(entityTypeToColor(data.entityType), direct ? 0.95 : 0.5),
+            forceLabel: direct || graph.order <= 15,
             highlighted: direct,
-            label: direct ? data.label : null,
+            label: direct || graph.order <= 15 ? data.label : null,
             size: direct ? Math.max(8, baseSize * 0.45) : Math.max(4, baseSize * 0.24),
             type: 'glow',
             x: data.x,
@@ -113,7 +119,12 @@ export const ClaimMiniGraph = ({ claimId }: ClaimMiniGraphProps) => {
   if (graphQuery.isLoading) {
     return (
       <section className="border-t-0.5 border-black/10 py-6">
-        <div className="h-[300px] rounded border-0.5 border-black/10 bg-white" />
+        <div className="mb-4">
+          <div className="h-3 w-28 rounded bg-black/10" />
+        </div>
+        <div className="overflow-hidden rounded border-0.5 border-black/10 bg-white">
+          <div className="w-full bg-black/[0.03]" style={{ height }} />
+        </div>
       </section>
     )
   }
@@ -147,7 +158,7 @@ export const ClaimMiniGraph = ({ claimId }: ClaimMiniGraphProps) => {
       </div>
       {shouldCollapse ? null : (
         <div className="overflow-hidden rounded border-0.5 border-black/10 bg-white">
-          <div ref={containerRef} className="h-[300px] w-full" />
+          <div ref={containerRef} className="w-full" style={{ height }} />
         </div>
       )}
     </section>
