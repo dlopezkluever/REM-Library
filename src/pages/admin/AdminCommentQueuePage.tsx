@@ -4,7 +4,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Check, ChevronLeft, ChevronRight, MessageSquare, RefreshCw, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import {
   Table,
   TableBody,
@@ -35,11 +34,11 @@ const statusClassNames: Record<string, string> = {
 
 const getTargetUrl = (comment: AdminCommentModerationRow) => {
   if (comment.target_type === 'entity') {
-    return `/admin/entities?search=${comment.target_id}`
+    return comment.targetEntity?.slug ? `/entity/${comment.targetEntity.slug}` : '/admin/entities'
   }
 
   if (comment.target_type === 'claim') {
-    return `/admin/claims?search=${comment.target_id}`
+    return `/claim/${comment.target_id}`
   }
 
   return `/admin/sources/${comment.target_id}`
@@ -56,6 +55,7 @@ export default function AdminCommentQueuePage() {
   const [selectedCommentIds, setSelectedCommentIds] = useState<string[]>([])
   const [clarifyingComment, setClarifyingComment] = useState<AdminCommentModerationRow | null>(null)
   const [clarificationNote, setClarificationNote] = useState('')
+  const [actionResult, setActionResult] = useState<string | null>(null)
   const commentsQuery = useQuery({
     queryKey: [...adminCommentsQueryKey, page, statusFilter, targetTypeFilter],
     queryFn: () =>
@@ -82,21 +82,42 @@ export default function AdminCommentQueuePage() {
       commentIds: string[]
       note?: string
     }) => {
-      for (const commentId of commentIds) {
-        if (action === 'approve') {
-          await approveComment(commentId)
-        } else if (action === 'reject') {
-          await rejectComment(commentId)
-        } else {
-          await requestCommentClarification(commentId, note ?? '')
-        }
+      const results = await Promise.allSettled(
+        commentIds.map(async (commentId) => {
+          if (action === 'approve') {
+            await approveComment(commentId)
+          } else if (action === 'reject') {
+            await rejectComment(commentId)
+          } else {
+            await requestCommentClarification(commentId, note ?? '')
+          }
+          return commentId
+        })
+      )
+
+      return {
+        failed: results.flatMap((result, index) =>
+          result.status === 'rejected' ? [commentIds[index]] : []
+        ),
+        succeeded: results.flatMap((result) =>
+          result.status === 'fulfilled' ? [result.value] : []
+        ),
       }
     },
-    onSuccess: async () => {
-      setSelectedCommentIds([])
+    onMutate: () => {
+      setActionResult(null)
+    },
+    onSuccess: async ({ failed, succeeded }) => {
+      setSelectedCommentIds(failed)
       setClarifyingComment(null)
       setClarificationNote('')
       await invalidateComments()
+
+      if (failed.length > 0) {
+        setActionResult(
+          `${succeeded.length} comment${succeeded.length === 1 ? '' : 's'} processed; ${failed.length} failed and remain selected.`
+        )
+      }
     },
   })
 
@@ -166,10 +187,10 @@ export default function AdminCommentQueuePage() {
         </div>
       </div>
 
-      {actionMutation.error ? (
-        <div className="rounded border border-0.5 border-terracotta/30 bg-terracotta-light p-4">
-          <p className="font-body text-sm text-terracotta-dark">
-            {getErrorMessage(actionMutation.error)}
+      {actionMutation.error || actionResult ? (
+        <div className="rounded border border-0.5 border-amber-300/60 bg-amber-50 p-4">
+          <p className="font-body text-sm text-amber-900">
+            {actionResult ?? getErrorMessage(actionMutation.error)}
           </p>
         </div>
       ) : null}
@@ -343,11 +364,15 @@ export default function AdminCommentQueuePage() {
           <p className="mb-3 font-body text-sm text-amber-900">
             Request clarification for: {truncateText(clarifyingComment.body, 120)}
           </p>
-          <Input
+          <textarea
+            aria-label="Clarification note"
+            className="min-h-28 w-full resize-y rounded border border-0.5 border-black/15 bg-white px-3 py-2 font-body text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-verdigris"
+            maxLength={1000}
             placeholder="What should the author clarify?"
             value={clarificationNote}
             onChange={(event) => setClarificationNote(event.target.value)}
           />
+          <p className="mt-1 font-body text-xs text-amber-800">{clarificationNote.length}/1000</p>
           <div className="mt-3 flex justify-end gap-2">
             <Button
               size="sm"

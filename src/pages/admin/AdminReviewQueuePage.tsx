@@ -59,7 +59,7 @@ export default function AdminReviewQueuePage() {
           >
             <option value="oldest">Oldest first</option>
             <option value="most_flagged">Most flagged</option>
-            <option value="highest_net_votes">Highest net votes</option>
+            <option value="highest_community_score">Highest community score</option>
             <option value="newest">Newest first</option>
           </select>
           <Button
