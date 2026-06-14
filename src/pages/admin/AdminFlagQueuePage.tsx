@@ -19,7 +19,7 @@ import {
   type AdminFlagModerationRow,
 } from '@/lib/api/admin'
 import type { FlagTargetType } from '@/lib/api/community'
-import { formatEnumLabel, truncateText } from '@/lib/format'
+import { formatEnumLabel, getErrorMessage, truncateText } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 const adminFlagsQueryKey = ['admin', 'flags'] as const
@@ -29,9 +29,6 @@ const statusClassNames: Record<string, string> = {
   open: 'border-iris/30 bg-iris-light text-iris-dark',
   resolved: 'border-verdigris bg-verdigris-light text-verdigris-dark',
 }
-
-const getErrorMessage = (error: unknown) =>
-  error instanceof Error ? error.message : 'Flag moderation failed.'
 
 const getTargetUrl = (flag: AdminFlagModerationRow) => {
   if (flag.target_type === 'entity') {
