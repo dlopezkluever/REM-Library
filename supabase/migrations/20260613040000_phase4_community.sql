@@ -416,6 +416,211 @@ group by target_type, target_id;
 
 grant select on public.open_flag_counts to authenticated;
 
+create or replace view public.pending_comment_counts
+with (security_invoker = true) as
+select
+  target_type,
+  target_id,
+  count(*)::integer as pending_comment_count
+from public.comments
+where status = 'pending'
+group by target_type, target_id;
+
+grant select on public.pending_comment_counts to authenticated;
+
+drop function if exists public.get_admin_entities_page(integer, integer, text, public.content_status);
+
+create or replace function public.get_admin_entities_page(
+  page_limit integer default 50,
+  page_offset integer default 0,
+  search_query text default null,
+  status_filter public.content_status default null
+)
+returns table (
+  total_count integer,
+  id uuid,
+  type public.entity_type,
+  name text,
+  slug text,
+  aliases text[],
+  description text,
+  confidence_score double precision,
+  confidence_override double precision,
+  image_url text,
+  hero_image_url text,
+  position_x double precision,
+  position_y double precision,
+  status public.content_status,
+  created_at timestamptz,
+  updated_at timestamptz,
+  community_score integer,
+  flag_count integer,
+  pending_comment_count integer
+)
+language sql
+stable
+security invoker
+set search_path = public
+as $$
+  with filtered as (
+    select entities.*
+    from public.entities
+    where entities.status <> 'archived'
+      and (status_filter is null or entities.status = status_filter)
+      and (
+        nullif(public.normalize_review_text(search_query), '') is null
+        or entities.name ilike '%' || replace(replace(public.normalize_review_text(search_query), '%', '\%'), '_', '\_') || '%' escape '\'
+        or exists (
+          select 1
+          from unnest(entities.aliases) as alias(value)
+          where alias.value ilike '%' || replace(replace(public.normalize_review_text(search_query), '%', '\%'), '_', '\_') || '%' escape '\'
+        )
+      )
+  ),
+  counted as (
+    select count(*)::integer as total_count from filtered
+  )
+  select
+    counted.total_count,
+    filtered.id,
+    filtered.type,
+    filtered.name,
+    filtered.slug,
+    filtered.aliases,
+    filtered.description,
+    filtered.confidence_score,
+    filtered.confidence_override,
+    filtered.image_url,
+    filtered.hero_image_url,
+    filtered.position_x,
+    filtered.position_y,
+    filtered.status,
+    filtered.created_at,
+    filtered.updated_at,
+    coalesce(community_scores.community_score, 0)::integer as community_score,
+    coalesce(open_flag_counts.flag_count, 0)::integer as flag_count,
+    coalesce(pending_comment_counts.pending_comment_count, 0)::integer as pending_comment_count
+  from filtered
+  cross join counted
+  left join public.community_scores
+    on community_scores.target_type = 'entity'
+    and community_scores.target_id = filtered.id
+  left join public.open_flag_counts
+    on open_flag_counts.target_type = 'entity'
+    and open_flag_counts.target_id = filtered.id
+  left join public.pending_comment_counts
+    on pending_comment_counts.target_type = 'entity'
+    and pending_comment_counts.target_id = filtered.id
+  order by filtered.updated_at desc, filtered.name
+  limit greatest(1, least(coalesce(page_limit, 50), 100))
+  offset greatest(coalesce(page_offset, 0), 0);
+$$;
+
+grant execute on function public.get_admin_entities_page(integer, integer, text, public.content_status) to authenticated;
+
+drop function if exists public.get_admin_claims_page(integer, integer, text, public.content_status);
+
+create or replace function public.get_admin_claims_page(
+  page_limit integer default 50,
+  page_offset integer default 0,
+  search_query text default null,
+  status_filter public.content_status default null
+)
+returns table (
+  total_count integer,
+  id uuid,
+  statement text,
+  detailed_argument text,
+  author_id uuid,
+  confidence_score double precision,
+  confidence_override double precision,
+  interpretation_frame public.interpretation_frame,
+  is_canonical boolean,
+  status public.content_status,
+  created_at timestamptz,
+  updated_at timestamptz,
+  entity_names text[],
+  evidence_count integer,
+  community_score integer,
+  flag_count integer,
+  pending_comment_count integer
+)
+language sql
+stable
+security invoker
+set search_path = public
+as $$
+  with filtered as (
+    select claims.*
+    from public.claims
+    where claims.status <> 'archived'
+      and (status_filter is null or claims.status = status_filter)
+      and (
+        nullif(public.normalize_review_text(search_query), '') is null
+        or claims.statement ilike '%' || replace(replace(public.normalize_review_text(search_query), '%', '\%'), '_', '\_') || '%' escape '\'
+      )
+  ),
+  counted as (
+    select count(*)::integer as total_count from filtered
+  )
+  select
+    counted.total_count,
+    filtered.id,
+    filtered.statement,
+    filtered.detailed_argument,
+    filtered.author_id,
+    filtered.confidence_score,
+    filtered.confidence_override,
+    filtered.interpretation_frame,
+    filtered.is_canonical,
+    filtered.status,
+    filtered.created_at,
+    filtered.updated_at,
+    coalesce(
+      array_agg(entities.name order by entities.name) filter (where entities.id is not null),
+      '{}'::text[]
+    ) as entity_names,
+    count(distinct claim_evidence.anchor_id)::integer as evidence_count,
+    coalesce(community_scores.community_score, 0)::integer as community_score,
+    coalesce(open_flag_counts.flag_count, 0)::integer as flag_count,
+    coalesce(pending_comment_counts.pending_comment_count, 0)::integer as pending_comment_count
+  from filtered
+  cross join counted
+  left join public.claim_entities on claim_entities.claim_id = filtered.id
+  left join public.entities on entities.id = claim_entities.entity_id
+  left join public.claim_evidence on claim_evidence.claim_id = filtered.id
+  left join public.community_scores
+    on community_scores.target_type = 'claim'
+    and community_scores.target_id = filtered.id
+  left join public.open_flag_counts
+    on open_flag_counts.target_type = 'claim'
+    and open_flag_counts.target_id = filtered.id
+  left join public.pending_comment_counts
+    on pending_comment_counts.target_type = 'claim'
+    and pending_comment_counts.target_id = filtered.id
+  group by
+    counted.total_count,
+    filtered.id,
+    filtered.statement,
+    filtered.detailed_argument,
+    filtered.author_id,
+    filtered.confidence_score,
+    filtered.confidence_override,
+    filtered.interpretation_frame,
+    filtered.is_canonical,
+    filtered.status,
+    filtered.created_at,
+    filtered.updated_at,
+    community_scores.community_score,
+    open_flag_counts.flag_count,
+    pending_comment_counts.pending_comment_count
+  order by filtered.updated_at desc, filtered.created_at desc
+  limit greatest(1, least(coalesce(page_limit, 50), 100))
+  offset greatest(coalesce(page_offset, 0), 0);
+$$;
+
+grant execute on function public.get_admin_claims_page(integer, integer, text, public.content_status) to authenticated;
+
 -- ---------------------------------------------------------------------------
 -- Review queue signal aggregation (section 8.4).
 -- For each source, sum the community signal of the published claims/entities
