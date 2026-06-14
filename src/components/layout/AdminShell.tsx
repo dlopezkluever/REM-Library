@@ -10,6 +10,7 @@ import {
   Globe,
   Inbox,
   LogOut,
+  MessageSquare,
   ScrollText,
   Settings,
 } from 'lucide-react'
@@ -28,6 +29,7 @@ export const AdminShell = () => {
     { to: ROUTES.ADMIN_SOURCE_CRAWL, label: 'Crawl Site', icon: Globe },
     { to: ROUTES.ADMIN_REVIEW, label: 'Review Queue', icon: GitPullRequestDraft },
     { to: ROUTES.ADMIN_SUGGESTIONS, label: 'Suggestions', icon: Inbox },
+    { to: ROUTES.ADMIN_COMMENTS, label: 'Comments', icon: MessageSquare },
     { to: ROUTES.ADMIN_ENTITIES, label: 'Entities', icon: ScrollText },
     { to: ROUTES.ADMIN_CLAIMS, label: 'Claims', icon: FileText },
     { to: ROUTES.ADMIN_RELATIONSHIPS, label: 'Relationships', icon: GitBranch },

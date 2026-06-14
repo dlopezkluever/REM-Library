@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowRight } from 'lucide-react'
+import { VoteWidget } from '@/components/community/VoteWidget'
 import { AttestationBar } from '@/components/entity/AttestationBar'
 import { EntityBadge } from '@/components/entity/EntityBadge'
 import { EntityChip } from '@/components/entity/EntityChip'
@@ -127,6 +128,7 @@ export const GraphSidePanel = () => {
               score={entity.confidence_override ?? entity.confidence_score}
               sourceCount={sourceCount}
             />
+            <VoteWidget compact targetId={entity.id} targetType="entity" />
 
             <p className="font-body text-[13px] leading-reading text-ink/75">
               {entity.description ?? 'No summary has been published for this entity yet.'}
