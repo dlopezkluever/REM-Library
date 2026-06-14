@@ -6,11 +6,13 @@ import {
   ChevronLeft,
   ChevronRight,
   Crown,
+  Flag,
   Lock,
   Plus,
   RefreshCw,
   Search,
 } from 'lucide-react'
+import { FlagDetailPanel } from '@/components/admin/FlagDetailPanel'
 import { ConfidenceOverrideInput } from '@/components/admin/ConfidenceOverrideInput'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -78,6 +80,7 @@ export default function AdminClaimManagerPage() {
   const [selectedClaimIds, setSelectedClaimIds] = useState<string[]>([])
   const [canonicalConflictTarget, setCanonicalConflictTarget] =
     useState<AdminClaimListRow | null>(null)
+  const [flagsClaim, setFlagsClaim] = useState<AdminClaimListRow | null>(null)
 
   const claimsQuery = useQuery({
     queryKey: [...adminClaimsQueryKey, page, search, statusFilter],
@@ -285,6 +288,9 @@ export default function AdminClaimManagerPage() {
               <TableHead>Frame</TableHead>
               <TableHead>Canonical</TableHead>
               <TableHead>Score</TableHead>
+              <TableHead>Community</TableHead>
+              <TableHead>Flags</TableHead>
+              <TableHead>Comments</TableHead>
               <TableHead>Entities</TableHead>
               <TableHead>Evidence</TableHead>
               <TableHead className="text-right">Actions</TableHead>
@@ -293,7 +299,7 @@ export default function AdminClaimManagerPage() {
           <TableBody>
             {claimsQuery.isLoading ? (
               <TableRow>
-                <TableCell className="font-body text-sm text-[#777]" colSpan={9}>
+                <TableCell className="font-body text-sm text-[#777]" colSpan={12}>
                   Loading claims...
                 </TableCell>
               </TableRow>
@@ -301,7 +307,7 @@ export default function AdminClaimManagerPage() {
 
             {claimsQuery.error ? (
               <TableRow>
-                <TableCell className="font-body text-sm text-terracotta-dark" colSpan={9}>
+                <TableCell className="font-body text-sm text-terracotta-dark" colSpan={12}>
                   Claims could not load.
                 </TableCell>
               </TableRow>
@@ -309,7 +315,7 @@ export default function AdminClaimManagerPage() {
 
             {!claimsQuery.isLoading && !claimsQuery.error && claims.length === 0 ? (
               <TableRow>
-                <TableCell className="font-body text-sm text-[#777]" colSpan={9}>
+                <TableCell className="font-body text-sm text-[#777]" colSpan={12}>
                   No claims match this view.
                 </TableCell>
               </TableRow>
@@ -409,6 +415,24 @@ export default function AdminClaimManagerPage() {
                         confidenceOverrideMutation.mutateAsync({ claim, override })
                       }
                     />
+                  </TableCell>
+                  <TableCell className="font-body text-sm text-ink">
+                    {claim.communityScore > 0 ? '+' : ''}
+                    {claim.communityScore}
+                  </TableCell>
+                  <TableCell>
+                    <button
+                      className="inline-flex items-center gap-1 rounded border-0.5 border-black/10 bg-white px-2 py-1 font-body text-xs text-terracotta hover:border-terracotta/40 disabled:text-[#999]"
+                      disabled={claim.flagCount === 0}
+                      type="button"
+                      onClick={() => setFlagsClaim(claim)}
+                    >
+                      <Flag aria-hidden="true" className="h-3 w-3" />
+                      {claim.flagCount}
+                    </button>
+                  </TableCell>
+                  <TableCell className="font-body text-sm text-ink">
+                    {claim.pendingCommentCount}
                   </TableCell>
                   <TableCell className="max-w-[260px] truncate font-body text-sm text-[#777]">
                     {claim.entityNames.length > 0 ? claim.entityNames.join(', ') : 'None'}
@@ -545,6 +569,14 @@ export default function AdminClaimManagerPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <FlagDetailPanel
+        open={flagsClaim !== null}
+        targetId={flagsClaim?.id ?? null}
+        targetLabel={flagsClaim?.statement ?? ''}
+        targetType="claim"
+        onOpenChange={(open) => !open && setFlagsClaim(null)}
+      />
     </div>
   )
 }

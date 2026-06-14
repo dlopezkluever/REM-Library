@@ -2,6 +2,15 @@ import { supabase } from '@/lib/supabase/client'
 import type { Tables } from '@/types/database'
 
 export type ClaimRow = Tables<'claims'>
+export type ClaimGraphEntity = Tables<'entities'> & { isDirect: boolean }
+export type ClaimGraphRelationship = Tables<'relationships'>
+
+export interface ClaimGraph {
+  directEntityCount: number
+  entities: ClaimGraphEntity[]
+  relationships: ClaimGraphRelationship[]
+  truncatedDirectEntityCount: number
+}
 
 export interface ClaimWithAuthor extends Tables<'claims'> {
   profiles: { display_name: string | null } | null
@@ -65,6 +74,75 @@ export const getEntitiesForClaim = async (claimId: string) => {
   }
 
   return data
+}
+
+export const getClaimGraph = async (claimId: string): Promise<ClaimGraph> => {
+  const { data: entityLinks, error: entityLinksError } = await supabase
+    .from('claim_entities')
+    .select('entity_id')
+    .eq('claim_id', claimId)
+
+  if (entityLinksError) {
+    throw entityLinksError
+  }
+
+  const directEntityIds = Array.from(new Set(entityLinks.map((link) => link.entity_id)))
+
+  if (directEntityIds.length === 0) {
+    return {
+      directEntityCount: 0,
+      entities: [],
+      relationships: [],
+      truncatedDirectEntityCount: 0,
+    }
+  }
+
+  const cappedDirectEntityIds = directEntityIds.slice(0, 10)
+  const directEntitySet = new Set(cappedDirectEntityIds)
+  const relationshipFilter = `from_entity_id.in.(${cappedDirectEntityIds.join(',')}),to_entity_id.in.(${cappedDirectEntityIds.join(',')})`
+  const { data: relationships, error: relationshipsError } = await supabase
+    .from('relationships')
+    .select('*')
+    .eq('status', 'active')
+    .or(relationshipFilter)
+    .order('weight', { ascending: false })
+    .limit(80)
+
+  if (relationshipsError) {
+    throw relationshipsError
+  }
+
+  const neighborIds = relationships
+    .flatMap((relationship) => [relationship.from_entity_id, relationship.to_entity_id])
+    .filter((entityId) => !directEntitySet.has(entityId))
+  const returnedEntityIds = Array.from(
+    new Set([...cappedDirectEntityIds, ...neighborIds.slice(0, 15)])
+  )
+
+  const { data: entities, error: entitiesError } = await supabase
+    .from('entities')
+    .select('*')
+    .in('id', returnedEntityIds)
+    .eq('status', 'published')
+
+  if (entitiesError) {
+    throw entitiesError
+  }
+
+  const entitySet = new Set(entities.map((entity) => entity.id))
+
+  return {
+    directEntityCount: directEntityIds.length,
+    entities: entities.map((entity) => ({
+      ...entity,
+      isDirect: directEntitySet.has(entity.id),
+    })),
+    relationships: relationships.filter(
+      (relationship) =>
+        entitySet.has(relationship.from_entity_id) && entitySet.has(relationship.to_entity_id)
+    ),
+    truncatedDirectEntityCount: Math.max(0, directEntityIds.length - cappedDirectEntityIds.length),
+  }
 }
 
 interface ClaimsForEntityOptions {
