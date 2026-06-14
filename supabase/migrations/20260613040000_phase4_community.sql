@@ -196,6 +196,10 @@ begin
       raise exception 'Community comments must be submitted for review.';
     end if;
 
+    perform pg_advisory_xact_lock(
+      hashtextextended('comments_pending_cap:' || new.author_id::text, 0)
+    );
+
     select count(*)::integer
     into pending_count
     from public.comments
