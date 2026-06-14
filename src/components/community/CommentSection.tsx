@@ -14,6 +14,7 @@ import {
   type CommunityTargetType,
   updateOwnPendingComment,
 } from '@/lib/api/community'
+import { getErrorMessage } from '@/lib/format'
 import { canContributeToCommunity, communityAdminRoles } from '@/lib/communityRoles'
 import { useAuth } from '@/hooks/useAuth'
 import { cn } from '@/lib/utils'
@@ -77,9 +78,6 @@ const getStatusBadge = (status: CommentRow['status']) => {
     label: 'Awaiting review',
   }
 }
-
-const getErrorMessage = (error: unknown) =>
-  error instanceof Error ? error.message : 'Comment could not be updated.'
 
 const OwnCommentCard = ({
   comment,

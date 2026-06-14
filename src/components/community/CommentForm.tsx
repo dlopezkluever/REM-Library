@@ -8,6 +8,7 @@ import {
   type CommentRow,
   type CommunityTargetType,
 } from '@/lib/api/community'
+import { getErrorMessage } from '@/lib/format'
 
 interface CommentFormProps {
   parentAuthorName?: string | null
@@ -17,9 +18,6 @@ interface CommentFormProps {
   onSubmitted: (comment: CommentRow) => void
   onCancelReply?: () => void
 }
-
-const getErrorMessage = (error: unknown) =>
-  error instanceof Error ? error.message : 'Comment could not be submitted.'
 
 export const CommentForm = ({
   parentAuthorName,
