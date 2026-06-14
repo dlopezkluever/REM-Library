@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/dialog'
 import {
   FLAG_REASONS,
+  getTargetAdminQueryKeys,
   getUserFlag,
   submitFlag,
   type FlagReason,
@@ -36,22 +37,6 @@ const getFlagError = (error: unknown) => {
   return 'Flag could not be submitted.'
 }
 
-const getTargetAdminQueryKeys = (targetType: FlagTargetType) => {
-  if (targetType === 'claim') {
-    return [['admin', 'claims'] as const]
-  }
-
-  if (targetType === 'entity') {
-    return [['admin', 'entities'] as const]
-  }
-
-  if (targetType === 'source') {
-    return [['admin', 'source-list'] as const, ['admin', 'sources'] as const]
-  }
-
-  return [['admin', 'comments'] as const]
-}
-
 export const FlagButton = ({ targetId, targetType }: FlagButtonProps) => {
   const { role, user } = useAuth()
   const queryClient = useQueryClient()
@@ -73,6 +58,7 @@ export const FlagButton = ({ targetId, targetType }: FlagButtonProps) => {
     onError: (error) => {
       if (error instanceof Error && error.message.includes('duplicate key')) {
         setSubmittedFlag(true)
+        setOpen(false)
       }
     },
     onSuccess: async () => {

@@ -4,6 +4,7 @@ import { ThumbsDown, ThumbsUp } from 'lucide-react'
 import {
   castVote,
   getCommunityScore,
+  getTargetAdminQueryKeys,
   getUserVote,
   removeVote,
   type CommunityScore,
@@ -80,18 +81,6 @@ const getNextScore = (
   return next
 }
 
-const getTargetAdminQueryKeys = (targetType: CommunityTargetType) => {
-  if (targetType === 'claim') {
-    return [['admin', 'claims'] as const]
-  }
-
-  if (targetType === 'entity') {
-    return [['admin', 'entities'] as const]
-  }
-
-  return [['admin', 'source-list'] as const, ['admin', 'sources'] as const]
-}
-
 export const VoteWidget = ({ compact = false, targetId, targetType }: VoteWidgetProps) => {
   const { user } = useAuth()
   const queryClient = useQueryClient()
@@ -158,7 +147,6 @@ export const VoteWidget = ({ compact = false, targetId, targetType }: VoteWidget
     onSettled: async () => {
       await queryClient.invalidateQueries({ queryKey: scoreQueryKey })
       await queryClient.invalidateQueries({ queryKey: voteQueryKey })
-      await queryClient.invalidateQueries({ queryKey: ['admin', 'review-queue'] })
       await Promise.all(
         getTargetAdminQueryKeys(targetType).map((queryKey) =>
           queryClient.invalidateQueries({ queryKey })
