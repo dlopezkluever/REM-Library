@@ -20,7 +20,7 @@ import {
   type AdminCommentModerationRow,
 } from '@/lib/api/admin'
 import type { CommunityTargetType } from '@/lib/api/community'
-import { truncateText } from '@/lib/format'
+import { getErrorMessage, truncateText } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 const adminCommentsQueryKey = ['admin', 'comments'] as const
@@ -45,9 +45,6 @@ const getTargetUrl = (comment: AdminCommentModerationRow) => {
 
   return `/admin/sources/${comment.target_id}`
 }
-
-const getErrorMessage = (error: unknown) =>
-  error instanceof Error ? error.message : 'Comment moderation failed.'
 
 const getStatusFilter = (value: string | null): AdminCommentModerationRow['status'] | 'all' =>
   commentStatusFilters.includes(value ?? '')
@@ -127,11 +124,11 @@ export default function AdminCommentQueuePage() {
     const affectedTargetTypes = new Set(targetTypes)
 
     if (affectedTargetTypes.has('claim')) {
-      await queryClient.invalidateQueries({ queryKey: ['admin', 'claims'] })
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'claims'], refetchType: 'none' })
     }
 
     if (affectedTargetTypes.has('entity')) {
-      await queryClient.invalidateQueries({ queryKey: ['admin', 'entities'] })
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'entities'], refetchType: 'none' })
     }
   }
 

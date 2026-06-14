@@ -9,11 +9,9 @@ import { ROUTES } from '@/constants/routes'
 import { createAdminEntity, type ContentStatus, type EntityType } from '@/lib/api/admin'
 import { TIMELINE_ERAS } from '@/lib/timeline/eras'
 import { parseTimelineSortYear } from '@/lib/timeline/pinchZoom'
+import { getErrorMessage } from '@/lib/format'
 
 const entityTypes: EntityType[] = ['symbol', 'figure', 'narrative', 'culture', 'trope']
-
-const getErrorMessage = (error: unknown) =>
-  error instanceof Error ? error.message : 'Entity could not be created.'
 
 export default function AdminEntityNewPage() {
   const navigate = useNavigate()
