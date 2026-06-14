@@ -59,6 +59,7 @@ export interface AdminFlagPage {
 
 export interface AdminCommentFilters {
   status?: AdminCommentRow['status'] | 'all'
+  targetId?: string | null
   targetType?: CommunityTargetType | 'all'
 }
 
@@ -877,6 +878,10 @@ export const getPendingComments = async (
 
   if (filters.targetType && filters.targetType !== 'all') {
     query = query.eq('target_type', filters.targetType)
+  }
+
+  if (filters.targetId?.trim()) {
+    query = query.eq('target_id', filters.targetId.trim())
   }
 
   const { data, error, count } = await query

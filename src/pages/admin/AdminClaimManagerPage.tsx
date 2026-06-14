@@ -8,6 +8,7 @@ import {
   Crown,
   Flag,
   Lock,
+  MessageSquare,
   Plus,
   RefreshCw,
   Search,
@@ -61,6 +62,9 @@ const statusClassNames: Record<ContentStatus, string> = {
 
 const ARCHIVE_CLAIM_CONFIRMATION =
   'Archive this claim? It will no longer appear publicly and cannot be easily restored.'
+
+const getPendingCommentQueueUrl = (targetId: string) =>
+  `/admin/comments?status=pending&target_type=claim&target_id=${encodeURIComponent(targetId)}`
 
 const getMutationError = (error: unknown) => {
   if (error instanceof Error) {
@@ -432,7 +436,19 @@ export default function AdminClaimManagerPage() {
                     </button>
                   </TableCell>
                   <TableCell className="font-body text-sm text-ink">
-                    {claim.pendingCommentCount}
+                    {claim.pendingCommentCount > 0 ? (
+                      <Link
+                        aria-label={`${claim.pendingCommentCount} pending comments for claim`}
+                        to={getPendingCommentQueueUrl(claim.id)}
+                      >
+                        <Badge className="gap-1 border-iris/30 bg-iris-light text-iris-dark hover:border-iris/50">
+                          <MessageSquare aria-hidden="true" className="h-3 w-3" />
+                          {claim.pendingCommentCount}
+                        </Badge>
+                      </Link>
+                    ) : (
+                      0
+                    )}
                   </TableCell>
                   <TableCell className="max-w-[260px] truncate font-body text-sm text-[#777]">
                     {claim.entityNames.length > 0 ? claim.entityNames.join(', ') : 'None'}
