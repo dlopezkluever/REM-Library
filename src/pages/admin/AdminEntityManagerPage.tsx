@@ -9,6 +9,7 @@ import {
   ChevronRight,
   Image as ImageIcon,
   Flag,
+  MessageSquare,
   Plus,
   RefreshCw,
   Search,
@@ -60,6 +61,9 @@ const statusClassNames: Record<ContentStatus, string> = {
 
 const ARCHIVE_ENTITY_CONFIRMATION =
   'Archive this entity? It will no longer appear publicly and cannot be easily restored.'
+
+const getPendingCommentQueueUrl = (targetId: string) =>
+  `/admin/comments?status=pending&target_type=entity&target_id=${encodeURIComponent(targetId)}`
 
 const getMutationError = (error: unknown) => {
   if (error instanceof Error) {
@@ -372,7 +376,19 @@ export default function AdminEntityManagerPage() {
                     </button>
                   </TableCell>
                   <TableCell className="font-body text-sm text-ink">
-                    {entity.pendingCommentCount}
+                    {entity.pendingCommentCount > 0 ? (
+                      <Link
+                        aria-label={`${entity.pendingCommentCount} pending comments for ${entity.name}`}
+                        to={getPendingCommentQueueUrl(entity.id)}
+                      >
+                        <Badge className="gap-1 border-iris/30 bg-iris-light text-iris-dark hover:border-iris/50">
+                          <MessageSquare aria-hidden="true" className="h-3 w-3" />
+                          {entity.pendingCommentCount}
+                        </Badge>
+                      </Link>
+                    ) : (
+                      0
+                    )}
                   </TableCell>
                   <TableCell className="max-w-[260px] truncate font-body text-sm text-[#777]">
                     {entity.aliases.length > 0 ? entity.aliases.join(', ') : 'None'}

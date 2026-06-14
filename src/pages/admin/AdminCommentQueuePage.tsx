@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Check, ChevronLeft, ChevronRight, MessageSquare, RefreshCw, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -24,6 +24,8 @@ import { truncateText } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 const adminCommentsQueryKey = ['admin', 'comments'] as const
+const commentStatusFilters = ['pending', 'needs_clarification', 'approved', 'rejected', 'all']
+const targetTypeFilters = ['entity', 'claim', 'source']
 
 const statusClassNames: Record<string, string> = {
   approved: 'border-verdigris bg-verdigris-light text-verdigris-dark',
@@ -47,20 +49,73 @@ const getTargetUrl = (comment: AdminCommentModerationRow) => {
 const getErrorMessage = (error: unknown) =>
   error instanceof Error ? error.message : 'Comment moderation failed.'
 
+const getStatusFilter = (value: string | null): AdminCommentModerationRow['status'] | 'all' =>
+  commentStatusFilters.includes(value ?? '')
+    ? (value as AdminCommentModerationRow['status'] | 'all')
+    : 'pending'
+
+const getTargetTypeFilter = (value: string | null): CommunityTargetType | 'all' =>
+  targetTypeFilters.includes(value ?? '') ? (value as CommunityTargetType) : 'all'
+
 export default function AdminCommentQueuePage() {
   const queryClient = useQueryClient()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const statusParam = searchParams.get('status')
+  const targetTypeParam = searchParams.get('target_type')
+  const targetIdParam = searchParams.get('target_id')?.trim() ?? ''
   const [page, setPage] = useState(0)
-  const [statusFilter, setStatusFilter] = useState<string>('pending')
-  const [targetTypeFilter, setTargetTypeFilter] = useState<CommunityTargetType | 'all'>('all')
+  const statusFilter = getStatusFilter(statusParam)
+  const targetTypeFilter = getTargetTypeFilter(targetTypeParam)
+  const targetIdFilter = targetIdParam
   const [selectedCommentIds, setSelectedCommentIds] = useState<string[]>([])
   const [clarifyingComment, setClarifyingComment] = useState<AdminCommentModerationRow | null>(null)
   const [clarificationNote, setClarificationNote] = useState('')
   const [actionResult, setActionResult] = useState<string | null>(null)
+
+  const updateFilters = ({
+    status,
+    targetId,
+    targetType,
+  }: {
+    status?: AdminCommentModerationRow['status'] | 'all'
+    targetId?: string
+    targetType?: CommunityTargetType | 'all'
+  }) => {
+    const nextParams = new URLSearchParams(searchParams)
+
+    if (status !== undefined) {
+      nextParams.set('status', status)
+    }
+
+    if (targetType !== undefined) {
+      if (targetType === 'all') {
+        nextParams.delete('target_type')
+      } else {
+        nextParams.set('target_type', targetType)
+      }
+    }
+
+    if (targetId !== undefined) {
+      const trimmedTargetId = targetId.trim()
+
+      if (trimmedTargetId) {
+        nextParams.set('target_id', trimmedTargetId)
+      } else {
+        nextParams.delete('target_id')
+      }
+    }
+
+    setSearchParams(nextParams)
+    setPage(0)
+    setSelectedCommentIds([])
+  }
+
   const commentsQuery = useQuery({
-    queryKey: [...adminCommentsQueryKey, page, statusFilter, targetTypeFilter],
+    queryKey: [...adminCommentsQueryKey, page, statusFilter, targetTypeFilter, targetIdFilter],
     queryFn: () =>
       getPendingComments(page, {
-        status: statusFilter as AdminCommentModerationRow['status'] | 'all',
+        status: statusFilter,
+        targetId: targetIdFilter,
         targetType: targetTypeFilter,
       }),
   })
@@ -196,15 +251,13 @@ export default function AdminCommentQueuePage() {
       ) : null}
 
       <section className="rounded border border-0.5 border-black/[0.09] bg-white p-4">
-        <div className="grid gap-3 md:grid-cols-2">
+        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
           <select
             aria-label="Filter by status"
             className="h-10 rounded border border-0.5 border-black/15 bg-stone px-3 font-body text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-verdigris"
             value={statusFilter}
             onChange={(event) => {
-              setStatusFilter(event.target.value)
-              setPage(0)
-              setSelectedCommentIds([])
+              updateFilters({ status: getStatusFilter(event.target.value) })
             }}
           >
             <option value="pending">Pending</option>
@@ -218,9 +271,9 @@ export default function AdminCommentQueuePage() {
             className="h-10 rounded border border-0.5 border-black/15 bg-stone px-3 font-body text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-verdigris"
             value={targetTypeFilter}
             onChange={(event) => {
-              setTargetTypeFilter(event.target.value as CommunityTargetType | 'all')
-              setPage(0)
-              setSelectedCommentIds([])
+              updateFilters({
+                targetType: getTargetTypeFilter(event.target.value),
+              })
             }}
           >
             <option value="all">All target types</option>
@@ -228,6 +281,26 @@ export default function AdminCommentQueuePage() {
             <option value="claim">Claims</option>
             <option value="source">Sources</option>
           </select>
+          <input
+            aria-label="Filter by target ID"
+            className="h-10 rounded border border-0.5 border-black/15 bg-stone px-3 font-body text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-verdigris"
+            placeholder="Target ID"
+            value={targetIdFilter}
+            onChange={(event) => {
+              updateFilters({ targetId: event.target.value })
+            }}
+          />
+          <Button
+            disabled={!targetIdFilter}
+            size="sm"
+            type="button"
+            variant="outline"
+            onClick={() => {
+              updateFilters({ targetId: '' })
+            }}
+          >
+            Clear target
+          </Button>
         </div>
       </section>
 
