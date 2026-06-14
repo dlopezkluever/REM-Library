@@ -120,11 +120,19 @@ export default function AdminCommentQueuePage() {
       }),
   })
 
-  const invalidateComments = async () => {
+  const invalidateComments = async (targetTypes: CommunityTargetType[]) => {
     await queryClient.invalidateQueries({ queryKey: adminCommentsQueryKey })
     await queryClient.invalidateQueries({ queryKey: ['comments'] })
-    await queryClient.invalidateQueries({ queryKey: ['admin', 'claims'] })
-    await queryClient.invalidateQueries({ queryKey: ['admin', 'entities'] })
+
+    const affectedTargetTypes = new Set(targetTypes)
+
+    if (affectedTargetTypes.has('claim')) {
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'claims'] })
+    }
+
+    if (affectedTargetTypes.has('entity')) {
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'entities'] })
+    }
   }
 
   const actionMutation = useMutation({
@@ -140,33 +148,39 @@ export default function AdminCommentQueuePage() {
       const results = await Promise.allSettled(
         commentIds.map(async (commentId) => {
           if (action === 'approve') {
-            await approveComment(commentId)
+            return approveComment(commentId)
           } else if (action === 'reject') {
-            await rejectComment(commentId)
-          } else {
-            await requestCommentClarification(commentId, note ?? '')
+            return rejectComment(commentId)
           }
-          return commentId
+
+          return requestCommentClarification(commentId, note ?? '')
         })
       )
 
       return {
+        affectedTargetTypes: Array.from(
+          new Set(
+            results.flatMap((result) =>
+              result.status === 'fulfilled' ? [result.value.target_type] : []
+            )
+          )
+        ),
         failed: results.flatMap((result, index) =>
           result.status === 'rejected' ? [commentIds[index]] : []
         ),
         succeeded: results.flatMap((result) =>
-          result.status === 'fulfilled' ? [result.value] : []
+          result.status === 'fulfilled' ? [result.value.id] : []
         ),
       }
     },
     onMutate: () => {
       setActionResult(null)
     },
-    onSuccess: async ({ failed, succeeded }) => {
+    onSuccess: async ({ affectedTargetTypes, failed, succeeded }) => {
       setSelectedCommentIds(failed)
       setClarifyingComment(null)
       setClarificationNote('')
-      await invalidateComments()
+      await invalidateComments(affectedTargetTypes)
 
       if (failed.length > 0) {
         setActionResult(
@@ -302,6 +316,16 @@ export default function AdminCommentQueuePage() {
             Clear target
           </Button>
         </div>
+        {targetIdFilter ? (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Badge className="border-iris/30 bg-iris-light text-iris-dark">
+              Target filter active
+            </Badge>
+            <code className="rounded bg-black/[0.04] px-2 py-1 font-mono text-xs text-[#555]">
+              {targetIdFilter}
+            </code>
+          </div>
+        ) : null}
       </section>
 
       <div className="overflow-hidden rounded border border-0.5 border-black/[0.09] bg-white">

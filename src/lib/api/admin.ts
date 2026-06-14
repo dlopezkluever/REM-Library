@@ -41,6 +41,9 @@ export interface AdminCommentModerationRow extends AdminCommentRow {
 
 export interface AdminFlagModerationRow extends AdminFlagRow {
   reporter: Pick<Tables<'profiles'>, 'display_name' | 'email'> | null
+  targetClaim?: Pick<Tables<'claims'>, 'id' | 'statement'> | null
+  targetEntity?: Pick<Tables<'entities'>, 'id' | 'name' | 'slug'> | null
+  targetSource?: Pick<Tables<'sources'>, 'id' | 'title'> | null
 }
 
 export interface AdminCommentPage {
@@ -772,10 +775,9 @@ const getSignalSummariesForTargets = async (
       .eq('target_type', targetType)
       .in('target_id', uniqueTargetIds),
     supabase
-      .from('comments')
-      .select('target_id')
+      .from('pending_comment_counts')
+      .select('target_id, pending_comment_count')
       .eq('target_type', targetType)
-      .eq('status', 'pending')
       .in('target_id', uniqueTargetIds),
   ])
 
@@ -816,10 +818,14 @@ const getSignalSummariesForTargets = async (
   })
 
   commentResult.data.forEach((row) => {
+    if (!row.target_id) {
+      return
+    }
+
     const summary = summaries.get(row.target_id)
 
     if (summary) {
-      summary.pendingCommentCount += 1
+      summary.pendingCommentCount = row.pending_comment_count ?? 0
     }
   })
 
@@ -1007,8 +1013,54 @@ export const getOpenFlags = async (
     throw error
   }
 
+  const flags = (data ?? []) as unknown as AdminFlagModerationRow[]
+  const entityTargetIds = uniqueIds(
+    flags.filter((flag) => flag.target_type === 'entity').map((flag) => flag.target_id)
+  )
+  const claimTargetIds = uniqueIds(
+    flags.filter((flag) => flag.target_type === 'claim').map((flag) => flag.target_id)
+  )
+  const sourceTargetIds = uniqueIds(
+    flags.filter((flag) => flag.target_type === 'source').map((flag) => flag.target_id)
+  )
+
+  const [entitiesResult, claimsResult, sourcesResult] = await Promise.all([
+    entityTargetIds.length > 0
+      ? supabase.from('entities').select('id, name, slug').in('id', entityTargetIds)
+      : Promise.resolve({ data: [], error: null }),
+    claimTargetIds.length > 0
+      ? supabase.from('claims').select('id, statement').in('id', claimTargetIds)
+      : Promise.resolve({ data: [], error: null }),
+    sourceTargetIds.length > 0
+      ? supabase.from('sources').select('id, title').in('id', sourceTargetIds)
+      : Promise.resolve({ data: [], error: null }),
+  ])
+
+  if (entitiesResult.error) {
+    throw entitiesResult.error
+  }
+
+  if (claimsResult.error) {
+    throw claimsResult.error
+  }
+
+  if (sourcesResult.error) {
+    throw sourcesResult.error
+  }
+
+  const entitiesById = new Map((entitiesResult.data ?? []).map((entity) => [entity.id, entity]))
+  const claimsById = new Map((claimsResult.data ?? []).map((claim) => [claim.id, claim]))
+  const sourcesById = new Map((sourcesResult.data ?? []).map((source) => [source.id, source]))
+
   return {
-    flags: (data ?? []) as unknown as AdminFlagModerationRow[],
+    flags: flags.map((flag) => ({
+      ...flag,
+      targetClaim: flag.target_type === 'claim' ? (claimsById.get(flag.target_id) ?? null) : null,
+      targetEntity:
+        flag.target_type === 'entity' ? (entitiesById.get(flag.target_id) ?? null) : null,
+      targetSource:
+        flag.target_type === 'source' ? (sourcesById.get(flag.target_id) ?? null) : null,
+    })),
     page,
     pageSize: adminFlagPageSize,
     totalCount: requireCount(count),
@@ -1856,7 +1908,7 @@ export const getPendingReviewSourceSummaries = async (
   sort: ReviewQueueSort = 'oldest'
 ): Promise<ReviewSourceSummary[]> => {
   const { data, error } = await supabase.rpc('get_pending_review_source_summaries', {
-    page_limit: reviewQueuePageSize,
+    page_limit: reviewQueuePageSize + 1,
     page_offset: page * reviewQueuePageSize,
     sort_mode: sort,
   })
@@ -1961,7 +2013,7 @@ export const getPendingExtractionReviewSource = async (
 }
 
 export const getPendingExtractionReviewSources = async (): Promise<ReviewSourceGroup[]> => {
-  const summaries = await getPendingReviewSourceSummaries()
+  const summaries = (await getPendingReviewSourceSummaries()).slice(0, reviewQueuePageSize)
   const groups = await Promise.all(
     summaries.map((summary) => getPendingExtractionReviewSource(summary.source.id))
   )
@@ -1989,15 +2041,10 @@ export const getAdminEntitiesPage = async ({
     throw error
   }
 
-  const signalSummaries = await getSignalSummariesForTargets(
-    'entity',
-    data.map((row) => row.id)
-  )
-
   return {
     entities: data.map((row) => ({
       aliases: row.aliases,
-      communityScore: signalSummaries.get(row.id)?.communityScore ?? 0,
+      communityScore: row.community_score ?? 0,
       confidence_override: row.confidence_override,
       confidence_score: row.confidence_score,
       created_at: row.created_at,
@@ -2005,16 +2052,16 @@ export const getAdminEntitiesPage = async ({
       date_sort_year: null,
       description: row.description,
       fts: null,
-      hero_image_url: null,
+      hero_image_url: row.hero_image_url,
       id: row.id,
-      image_url: null,
+      image_url: row.image_url,
       name: row.name,
       position_x: row.position_x,
       position_y: row.position_y,
       slug: row.slug,
       status: row.status,
-      flagCount: signalSummaries.get(row.id)?.flagCount ?? 0,
-      pendingCommentCount: signalSummaries.get(row.id)?.pendingCommentCount ?? 0,
+      flagCount: row.flag_count ?? 0,
+      pendingCommentCount: row.pending_comment_count ?? 0,
       type: row.type,
       updated_at: row.updated_at,
     })),
@@ -2356,15 +2403,10 @@ export const getAdminClaimsPage = async ({
     throw error
   }
 
-  const signalSummaries = await getSignalSummariesForTargets(
-    'claim',
-    data.map((row) => row.id)
-  )
-
   return {
     claims: data.map((row) => ({
       author_id: row.author_id,
-      communityScore: signalSummaries.get(row.id)?.communityScore ?? 0,
+      communityScore: row.community_score ?? 0,
       confidence_override: row.confidence_override,
       confidence_score: row.confidence_score,
       created_at: row.created_at,
@@ -2374,8 +2416,8 @@ export const getAdminClaimsPage = async ({
       id: row.id,
       interpretation_frame: row.interpretation_frame,
       is_canonical: row.is_canonical,
-      flagCount: signalSummaries.get(row.id)?.flagCount ?? 0,
-      pendingCommentCount: signalSummaries.get(row.id)?.pendingCommentCount ?? 0,
+      flagCount: row.flag_count ?? 0,
+      pendingCommentCount: row.pending_comment_count ?? 0,
       statement: row.statement,
       status: row.status,
       updated_at: row.updated_at,
