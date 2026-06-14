@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronDown, ChevronRight, RefreshCw } from 'lucide-react'
 import { ExtractionReviewPanel } from '@/components/admin/ExtractionReviewPanel'
 import { Badge } from '@/components/ui/badge'
@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import {
   getPendingExtractionReviewSource,
   getPendingReviewSourceSummaries,
+  reviewQueuePageSize,
   type ReviewQueueSort,
 } from '@/lib/api/admin'
 import { cn } from '@/lib/utils'
@@ -19,11 +20,17 @@ export default function AdminReviewQueuePage() {
   const requestedSourceId = searchParams.get('source')
   const queryClient = useQueryClient()
   const [sort, setSort] = useState<ReviewQueueSort>('oldest')
-  const reviewQueueQuery = useQuery({
+  const reviewQueueQuery = useInfiniteQuery({
     queryKey: [...reviewQueueQueryKey, sort],
-    queryFn: () => getPendingReviewSourceSummaries(0, sort),
+    queryFn: ({ pageParam }) => getPendingReviewSourceSummaries(pageParam, sort),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) =>
+      lastPage.length === reviewQueuePageSize ? allPages.length : undefined,
   })
-  const summaries = useMemo(() => reviewQueueQuery.data ?? [], [reviewQueueQuery.data])
+  const summaries = useMemo(
+    () => reviewQueueQuery.data?.pages.flat() ?? [],
+    [reviewQueueQuery.data]
+  )
   const [expandedSourceId, setExpandedSourceId] = useState<string | null>(requestedSourceId)
 
   const activeSourceId = requestedSourceId ?? expandedSourceId ?? summaries[0]?.source.id ?? null
@@ -63,7 +70,7 @@ export default function AdminReviewQueuePage() {
             <option value="newest">Newest first</option>
           </select>
           <Button
-            disabled={reviewQueueQuery.isFetching}
+            disabled={reviewQueueQuery.isFetching && !reviewQueueQuery.isFetchingNextPage}
             size="sm"
             type="button"
             variant="outline"
@@ -71,7 +78,12 @@ export default function AdminReviewQueuePage() {
           >
             <RefreshCw
               aria-hidden="true"
-              className={cn('h-3.5 w-3.5', reviewQueueQuery.isFetching && 'animate-spin')}
+              className={cn(
+                'h-3.5 w-3.5',
+                reviewQueueQuery.isFetching &&
+                  !reviewQueueQuery.isFetchingNextPage &&
+                  'animate-spin'
+              )}
             />
             Refresh
           </Button>
@@ -139,6 +151,21 @@ export default function AdminReviewQueuePage() {
             </button>
           )
         })}
+
+        {summaries.length > 0 && reviewQueueQuery.hasNextPage ? (
+          <div className="border-t border-t-0.5 border-t-black/[0.09] px-4 py-3">
+            <Button
+              className="w-full"
+              disabled={reviewQueueQuery.isFetchingNextPage}
+              size="sm"
+              type="button"
+              variant="outline"
+              onClick={() => void reviewQueueQuery.fetchNextPage()}
+            >
+              {reviewQueueQuery.isFetchingNextPage ? 'Loading more...' : 'Load more'}
+            </Button>
+          </div>
+        ) : null}
       </section>
 
       {selectedSourceQuery.isLoading ? (
