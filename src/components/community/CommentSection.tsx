@@ -14,6 +14,7 @@ import {
   type CommunityTargetType,
   updateOwnPendingComment,
 } from '@/lib/api/community'
+import { canContributeToCommunity, communityAdminRoles } from '@/lib/communityRoles'
 import { useAuth } from '@/hooks/useAuth'
 import { cn } from '@/lib/utils'
 
@@ -21,9 +22,6 @@ interface CommentSectionProps {
   targetId: string
   targetType: CommunityTargetType
 }
-
-const contributorRoles = new Set(['contributor', 'editor', 'super_admin'])
-const adminRoles = new Set(['editor', 'super_admin'])
 
 const CommentCard = ({
   comment,
@@ -39,7 +37,7 @@ const CommentCard = ({
       <p className="font-body text-sm font-semibold text-ink">
         {comment.author_display_name ?? 'Community member'}
       </p>
-      {adminRoles.has(comment.author_role) ? (
+      {communityAdminRoles.has(comment.author_role) ? (
         <Badge className="border-verdigris/40 bg-verdigris-light text-verdigris-dark">Admin</Badge>
       ) : null}
       <span className="font-body text-xs text-[#888]">
@@ -195,7 +193,7 @@ export const CommentSection = ({ targetId, targetType }: CommentSectionProps) =>
   const { role, user } = useAuth()
   const [replyTarget, setReplyTarget] = useState<ApprovedComment | null>(null)
   const [expanded, setExpanded] = useState(true)
-  const canComment = Boolean(user && role && contributorRoles.has(role))
+  const canComment = Boolean(user && canContributeToCommunity(role))
   const approvedQueryKey = ['comments', targetType, targetId, 'approved'] as const
   const ownQueryKey = ['comments', targetType, targetId, 'own'] as const
 
