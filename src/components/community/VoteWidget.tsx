@@ -20,6 +20,13 @@ interface VoteWidgetProps {
   targetType: CommunityTargetType
 }
 
+interface VoteMutationContext {
+  nextScore: CommunityScore
+  nextVote: VoteValue | null
+  previousScore: CommunityScore
+  previousVote: VoteValue | null
+}
+
 const emptyScore: CommunityScore = {
   community_score: 0,
   downvote_count: 0,
@@ -106,7 +113,7 @@ export const VoteWidget = ({ compact = false, targetId, targetType }: VoteWidget
     onError: (
       mutationError,
       _nextVote,
-      context: { previousScore: CommunityScore; previousVote: VoteValue | null } | undefined
+      context: VoteMutationContext | undefined
     ) => {
       setOptimisticScore(context?.previousScore ?? null)
       setOptimisticVote(context?.previousVote)
@@ -118,10 +125,23 @@ export const VoteWidget = ({ compact = false, targetId, targetType }: VoteWidget
       await queryClient.cancelQueries({ queryKey: voteQueryKey })
       const previousScore = score
       const previousVote = vote
-      setOptimisticScore(getNextScore(score, vote, nextVote))
+      const nextScore = getNextScore(score, vote, nextVote)
+      setOptimisticScore(nextScore)
       setOptimisticVote(nextVote)
 
-      return { previousScore, previousVote }
+      return { nextScore, nextVote, previousScore, previousVote }
+    },
+    onSuccess: (
+      _data,
+      _nextVote,
+      context: VoteMutationContext | undefined
+    ) => {
+      if (!context) {
+        return
+      }
+
+      queryClient.setQueryData(scoreQueryKey, context.nextScore)
+      queryClient.setQueryData(voteQueryKey, context.nextVote)
     },
     onSettled: async () => {
       await queryClient.invalidateQueries({ queryKey: scoreQueryKey })

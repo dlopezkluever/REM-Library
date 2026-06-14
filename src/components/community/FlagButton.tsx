@@ -16,14 +16,13 @@ import {
   type FlagReason,
   type FlagTargetType,
 } from '@/lib/api/community'
+import { canContributeToCommunity } from '@/lib/communityRoles'
 import { useAuth } from '@/hooks/useAuth'
 
 interface FlagButtonProps {
   targetId: string
   targetType: FlagTargetType
 }
-
-const contributorRoles = new Set(['contributor', 'editor', 'super_admin'])
 
 const getFlagError = (error: unknown) => {
   if (error instanceof Error) {
@@ -70,7 +69,7 @@ export const FlagButton = ({ targetId, targetType }: FlagButtonProps) => {
     },
   })
 
-  if (!user || !role || !contributorRoles.has(role)) {
+  if (!user || !canContributeToCommunity(role)) {
     return null
   }
 
