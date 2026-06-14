@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Flag } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -37,6 +38,7 @@ export const FlagDetailPanel = ({
   onOpenChange,
 }: FlagDetailPanelProps) => {
   const queryClient = useQueryClient()
+  const [flagErrors, setFlagErrors] = useState<Record<string, string>>({})
   const flagsQuery = useQuery({
     enabled: open && Boolean(targetId),
     queryKey: ['admin', 'flags', targetType, targetId],
@@ -51,7 +53,14 @@ export const FlagDetailPanel = ({
       action: 'dismiss' | 'resolve'
       flag: AdminFlagModerationRow
     }) => (action === 'resolve' ? resolveFlag(flag.id) : dismissFlag(flag.id)),
+    onError: (error, variables) => {
+      setFlagErrors((current) => ({
+        ...current,
+        [variables.flag.id]: getErrorMessage(error),
+      }))
+    },
     onSuccess: async () => {
+      setFlagErrors({})
       await queryClient.invalidateQueries({ queryKey: ['admin', 'flags'] })
       await queryClient.invalidateQueries({
         queryKey: ['admin', targetType === 'claim' ? 'claims' : 'entities'],
@@ -60,10 +69,18 @@ export const FlagDetailPanel = ({
     },
   })
   const pendingFlagId = moderateMutation.isPending ? moderateMutation.variables?.flag.id : null
-  const failedFlagId = moderateMutation.isError ? moderateMutation.variables?.flag.id : null
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Sheet
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) {
+          setFlagErrors({})
+        }
+
+        onOpenChange(nextOpen)
+      }}
+    >
       <SheetContent className="w-[min(92vw,440px)] overflow-y-auto">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
@@ -101,10 +118,8 @@ export const FlagDetailPanel = ({
                   {flag.notes}
                 </p>
               ) : null}
-              {failedFlagId === flag.id ? (
-                <p className="mt-3 font-body text-sm text-terracotta-dark">
-                  {getErrorMessage(moderateMutation.error)}
-                </p>
+              {flagErrors[flag.id] ? (
+                <p className="mt-3 font-body text-sm text-terracotta-dark">{flagErrors[flag.id]}</p>
               ) : null}
               <div className="mt-4 flex justify-end gap-2">
                 <Button

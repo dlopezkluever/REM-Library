@@ -23,6 +23,8 @@ interface FlagButtonProps {
   targetType: FlagTargetType
 }
 
+const contributorRoles = new Set(['contributor', 'editor', 'super_admin'])
+
 const getFlagError = (error: unknown) => {
   if (error instanceof Error) {
     if (error.message.includes('duplicate key')) {
@@ -36,7 +38,7 @@ const getFlagError = (error: unknown) => {
 }
 
 export const FlagButton = ({ targetId, targetType }: FlagButtonProps) => {
-  const { user } = useAuth()
+  const { role, user } = useAuth()
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
   const [reason, setReason] = useState<FlagReason>('factually_incorrect')
@@ -68,7 +70,7 @@ export const FlagButton = ({ targetId, targetType }: FlagButtonProps) => {
     },
   })
 
-  if (!user) {
+  if (!user || !role || !contributorRoles.has(role)) {
     return null
   }
 
