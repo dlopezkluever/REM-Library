@@ -1087,14 +1087,15 @@ export const getOpenFlagsForTarget = async (
 }
 
 const moderateFlag = async (flagId: string, status: Extract<AdminFlagRow['status'], string>) => {
+  const resolvedFields =
+    status === 'resolved'
+      ? { resolved_at: new Date().toISOString(), resolved_by: await getCurrentAdminUserId() }
+      : {}
+
   return withReviewerFields(
     supabase
       .from('content_flags')
-      .update({
-        resolved_at: new Date().toISOString(),
-        resolved_by: await getCurrentAdminUserId(),
-        status,
-      })
+      .update({ ...resolvedFields, status })
       .eq('id', flagId)
       .select('*, reporter:profiles!content_flags_reporter_id_fkey(display_name,email)')
       .single()

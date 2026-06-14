@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { ROUTES } from '@/constants/routes'
+import { getErrorMessage } from '@/lib/format'
 import { useAuth } from '@/hooks/useAuth'
 import { submitSuggestion, type SuggestionType } from '@/lib/api/suggestions'
 
@@ -24,9 +25,6 @@ interface SuggestionDialogProps {
   type: SuggestionType
   onOpenChange: (open: boolean) => void
 }
-
-const getErrorMessage = (error: unknown) =>
-  error instanceof Error ? error.message : 'Suggestion could not be submitted.'
 
 export const SuggestionDialog = ({
   open,
