@@ -184,8 +184,6 @@ export default function AdminSuggestionManagerPage() {
           <option value="">All types</option>
           <option value="new_claim">New claim</option>
           <option value="claim_correction">Claim correction</option>
-          <option value="flag_claim">Flag claim</option>
-          <option value="flag_entity">Flag entity</option>
         </select>
       </div>
 

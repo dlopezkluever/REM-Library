@@ -25,10 +25,11 @@ export default function AdminReviewQueuePage() {
     queryFn: ({ pageParam }) => getPendingReviewSourceSummaries(pageParam, sort),
     initialPageParam: 0,
     getNextPageParam: (lastPage, allPages) =>
-      lastPage.length === reviewQueuePageSize ? allPages.length : undefined,
+      lastPage.length > reviewQueuePageSize ? allPages.length : undefined,
   })
   const summaries = useMemo(
-    () => reviewQueueQuery.data?.pages.flat() ?? [],
+    () =>
+      reviewQueueQuery.data?.pages.flatMap((page) => page.slice(0, reviewQueuePageSize)) ?? [],
     [reviewQueueQuery.data]
   )
   const [expandedSourceId, setExpandedSourceId] = useState<string | null>(requestedSourceId)
