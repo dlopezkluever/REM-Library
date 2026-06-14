@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ROUTES } from '@/constants/routes'
+import { getErrorMessage } from '@/lib/format'
 import {
   adminSourceUrlExists,
   adminSourceTitleExists,
@@ -51,13 +52,7 @@ const categoryDescriptions: Record<SourceCategory, string> = {
   secondary_rem: 'Adjacent or related REM material.',
 }
 
-const getErrorMessage = (error: unknown) => {
-  if (error instanceof Error) {
-    return error.message
-  }
 
-  return 'The source could not be submitted.'
-}
 
 const duplicateSourceUrlMessage =
   'This URL already exists in the source library. Please check the existing source before adding a new one.'

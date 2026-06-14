@@ -36,6 +36,7 @@ import {
   type SaveEntityReviewInput,
 } from '@/lib/api/admin'
 import { useAuth } from '@/hooks/useAuth'
+import { formatEnumLabel } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import {
   enrichSplitError,
@@ -115,7 +116,7 @@ const itemTitle = (item: ReviewItem) => {
 const itemSubtitle = (item: ReviewItem) => {
   return item.kind === 'entity'
     ? ENTITY_LABELS[item.type]
-    : `${item.relationshipType.replace(/_/g, ' ')} - ${item.entitiesInvolved.join(', ')}`
+    : `${formatEnumLabel(item.relationshipType)} - ${item.entitiesInvolved.join(', ')}`
 }
 
 const getPassage = (item: ReviewItem) => {
@@ -244,7 +245,7 @@ const ClaimFields = ({
       >
         {relationshipTypeOptions.map((type) => (
           <option key={type} value={type}>
-            {type.replace(/_/g, ' ')}
+            {formatEnumLabel(type)}
           </option>
         ))}
       </select>

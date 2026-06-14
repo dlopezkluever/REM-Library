@@ -3,7 +3,11 @@ import { Link, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Play } from 'lucide-react'
 import { ConfidenceBreakdown } from '@/components/claim/ConfidenceBreakdown'
+import { ClaimMiniGraph } from '@/components/claim/ClaimMiniGraph'
 import { MarkdownProse } from '@/components/content/MarkdownProse'
+import { CommentSection } from '@/components/community/CommentSection'
+import { FlagButton } from '@/components/community/FlagButton'
+import { VoteWidget } from '@/components/community/VoteWidget'
 import { ConfidenceBadge } from '@/components/entity/ConfidenceBadge'
 import { EntityChip } from '@/components/entity/EntityChip'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -41,7 +45,6 @@ export default function ClaimDetailPage() {
   const { id } = useParams()
   const [openMediaAnchorId, setOpenMediaAnchorId] = useState<string | null>(null)
   const [suggestionOpen, setSuggestionOpen] = useState(false)
-  const [flagClaimOpen, setFlagClaimOpen] = useState(false)
 
   const claimQuery = useQuery({
     queryKey: ['claim', id],
@@ -108,6 +111,9 @@ export default function ClaimDetailPage() {
             <ConfidenceBadge score={confidence} />
           </div>
           <h1 className="font-body text-[18px] leading-reading text-ink">{claim.statement}</h1>
+          <div className="mt-4">
+            <VoteWidget targetId={claim.id} targetType="claim" />
+          </div>
           <p className="mt-4 font-body text-[12px] italic text-[#666]">
             {claim.profiles?.display_name ?? 'Unknown researcher'} &middot;{' '}
             {new Date(claim.created_at).toLocaleDateString()}
@@ -134,11 +140,11 @@ export default function ClaimDetailPage() {
             <Button size="sm" type="button" variant="outline" onClick={() => setSuggestionOpen(true)}>
               Suggest a correction
             </Button>
-            <Button size="sm" type="button" variant="ghost" onClick={() => setFlagClaimOpen(true)}>
-              Flag this claim
-            </Button>
+            <FlagButton targetId={claim.id} targetType="claim" />
           </div>
         </header>
+
+        <ClaimMiniGraph claimId={claim.id} />
 
         <section className="py-7">
           <h2 className="mb-4 font-display text-[11px] uppercase tracking-label text-ink">
@@ -255,6 +261,8 @@ export default function ClaimDetailPage() {
             </p>
           ) : null}
         </section>
+
+        <CommentSection targetId={claim.id} targetType="claim" />
       </article>
 
       <aside>
@@ -274,16 +282,6 @@ export default function ClaimDetailPage() {
         title="Suggest a correction"
         type="claim_correction"
         onOpenChange={setSuggestionOpen}
-      />
-      <SuggestionDialog
-        open={flagClaimOpen}
-        reasonLabel="Reason for flagging"
-        suggestionLabel="What is incorrect or disputed?"
-        targetClaimId={claim.id}
-        targetLabel={claim.statement}
-        title="Flag this claim"
-        type="flag_claim"
-        onOpenChange={setFlagClaimOpen}
       />
     </div>
   )

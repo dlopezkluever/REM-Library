@@ -1,5 +1,18 @@
 ﻿export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[]
 
+type CommunityTargetType = 'entity' | 'claim' | 'source'
+type FlagTargetType = CommunityTargetType | 'comment'
+type CommentStatus = 'pending' | 'approved' | 'rejected' | 'needs_clarification'
+type ContentFlagReason =
+  | 'factually_incorrect'
+  | 'spam'
+  | 'inappropriate'
+  | 'duplicate'
+  | 'needs_source'
+  | 'other'
+type ContentFlagStatus = 'open' | 'resolved' | 'dismissed'
+type ContentVoteValue = -1 | 1
+
 export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
@@ -802,9 +815,191 @@ export type Database = {
           },
         ]
       }
+      comments: {
+        Row: {
+          author_id: string
+          body: string
+          created_at: string
+          id: string
+          parent_id: string | null
+          reviewed_at: string | null
+          reviewer_id: string | null
+          reviewer_note: string | null
+          status: CommentStatus
+          target_id: string
+          target_type: CommunityTargetType
+          updated_at: string
+        }
+        Insert: {
+          author_id: string
+          body: string
+          created_at?: string
+          id?: string
+          parent_id?: string | null
+          reviewed_at?: string | null
+          reviewer_id?: string | null
+          reviewer_note?: string | null
+          status?: CommentStatus
+          target_id: string
+          target_type: CommunityTargetType
+          updated_at?: string
+        }
+        Update: {
+          author_id?: string
+          body?: string
+          created_at?: string
+          id?: string
+          parent_id?: string | null
+          reviewed_at?: string | null
+          reviewer_id?: string | null
+          reviewer_note?: string | null
+          status?: CommentStatus
+          target_id?: string
+          target_type?: CommunityTargetType
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'comments_author_id_fkey'
+            columns: ['author_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'comments_parent_id_fkey'
+            columns: ['parent_id']
+            isOneToOne: false
+            referencedRelation: 'comments'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'comments_reviewer_id_fkey'
+            columns: ['reviewer_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      content_flags: {
+        Row: {
+          created_at: string
+          id: string
+          notes: string | null
+          reason: ContentFlagReason
+          reporter_id: string
+          resolved_at: string | null
+          resolved_by: string | null
+          status: ContentFlagStatus
+          target_id: string
+          target_type: FlagTargetType
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          notes?: string | null
+          reason: ContentFlagReason
+          reporter_id: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: ContentFlagStatus
+          target_id: string
+          target_type: FlagTargetType
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          notes?: string | null
+          reason?: ContentFlagReason
+          reporter_id?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: ContentFlagStatus
+          target_id?: string
+          target_type?: FlagTargetType
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'content_flags_reporter_id_fkey'
+            columns: ['reporter_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'content_flags_resolved_by_fkey'
+            columns: ['resolved_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      content_votes: {
+        Row: {
+          created_at: string
+          id: string
+          target_id: string
+          target_type: CommunityTargetType
+          user_id: string
+          value: ContentVoteValue
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          target_id: string
+          target_type: CommunityTargetType
+          user_id: string
+          value: ContentVoteValue
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          target_id?: string
+          target_type?: CommunityTargetType
+          user_id?: string
+          value?: ContentVoteValue
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'content_votes_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+        ]
+      }
     }
     Views: {
-      [_ in never]: never
+      community_scores: {
+        Row: {
+          community_score: number | null
+          downvote_count: number | null
+          target_id: string | null
+          target_type: CommunityTargetType | null
+          total_votes: number | null
+          upvote_count: number | null
+        }
+        Relationships: []
+      }
+      open_flag_counts: {
+        Row: {
+          flag_count: number | null
+          target_id: string | null
+          target_type: FlagTargetType | null
+        }
+        Relationships: []
+      }
+      pending_comment_counts: {
+        Row: {
+          pending_comment_count: number | null
+          target_id: string | null
+          target_type: CommunityTargetType | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       approve_suggestion: {
@@ -826,16 +1021,47 @@ export type Database = {
           detailed_argument: string | null
           entity_names: string[]
           evidence_count: number
+          flag_count: number
           id: string
           interpretation_frame: Database['public']['Enums']['interpretation_frame'] | null
           is_canonical: boolean
+          pending_comment_count: number
           statement: string
           status: Database['public']['Enums']['content_status']
           total_count: number
           updated_at: string
+          community_score: number
         }[]
       }
       get_admin_content_stats: { Args: never; Returns: Json }
+      has_community_access: { Args: never; Returns: boolean }
+      get_approved_comments: {
+        Args: { p_target_id: string; p_target_type: string }
+        Returns: {
+          author_display_name: string | null
+          author_id: string
+          author_role: Database['public']['Enums']['admin_role']
+          body: string
+          created_at: string
+          id: string
+          parent_id: string | null
+          target_id: string
+          target_type: CommunityTargetType
+          updated_at: string
+        }[]
+      }
+      get_review_queue_signals: {
+        Args: never
+        Returns: {
+          community_score: number
+          flag_count: number
+          source_id: string
+        }[]
+      }
+      update_own_comment_body: {
+        Args: { p_body: string; p_comment_id: string }
+        Returns: Database['public']['Tables']['comments']['Row']
+      }
       get_admin_entities_page: {
         Args: {
           page_limit?: number
@@ -849,8 +1075,12 @@ export type Database = {
           confidence_score: number
           created_at: string
           description: string | null
+          flag_count: number
+          hero_image_url: string | null
           id: string
+          image_url: string | null
           name: string
+          pending_comment_count: number
           position_x: number | null
           position_y: number | null
           slug: string
@@ -858,6 +1088,7 @@ export type Database = {
           total_count: number
           type: Database['public']['Enums']['entity_type']
           updated_at: string
+          community_score: number
         }[]
       }
       get_admin_source_list_rows: {
@@ -886,8 +1117,10 @@ export type Database = {
         }[]
       }
       get_pending_review_source_summaries: {
-        Args: { page_limit?: number; page_offset?: number }
+        Args: { page_limit?: number; page_offset?: number; sort_mode?: string }
         Returns: {
+          community_score: number
+          flag_count: number
           oldest_extraction_at: string
           pending_extraction_count: number
           pending_item_count: number

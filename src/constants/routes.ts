@@ -20,6 +20,8 @@ export const ROUTES = {
   ADMIN_SOURCE_IMPACT: '/admin/sources/:id/impact',
   ADMIN_REVIEW: '/admin/review',
   ADMIN_SUGGESTIONS: '/admin/suggestions',
+  ADMIN_COMMENTS: '/admin/comments',
+  ADMIN_FLAGS: '/admin/flags',
   ADMIN_ENTITIES: '/admin/entities',
   ADMIN_ENTITY_NEW: '/admin/entities/new',
   ADMIN_CLAIMS: '/admin/claims',

@@ -1,16 +1,9 @@
 import { useState } from 'react'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
+import { getErrorMessage } from '@/lib/format'
 
 const formatOverrideValue = (value: number | null) => (value === null ? '' : value.toFixed(2))
-
-const getErrorMessage = (error: unknown) => {
-  if (error instanceof Error) {
-    return error.message
-  }
-
-  return 'Override could not be saved.'
-}
 
 interface ConfidenceOverrideInputProps {
   computedScore: number

@@ -2,13 +2,14 @@ import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowRight } from 'lucide-react'
+import { VoteWidget } from '@/components/community/VoteWidget'
 import { AttestationBar } from '@/components/entity/AttestationBar'
 import { EntityBadge } from '@/components/entity/EntityBadge'
 import { EntityChip } from '@/components/entity/EntityChip'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { getEntityPreviewWithClaims, getPublishedEntities } from '@/lib/api/entities'
 import { getAllPublishedRelationships } from '@/lib/api/relationships'
-import { truncateText } from '@/lib/format'
+import { formatEnumLabel, truncateText } from '@/lib/format'
 import { useGraphStore } from '@/stores/graphStore'
 import type { InterpretationFrame } from '@/types/domain'
 
@@ -78,7 +79,7 @@ export const GraphSidePanel = () => {
         return [
           {
             entity: connectedEntity,
-            relationshipLabel: relationship.type.replace(/_/g, ' '),
+            relationshipLabel: formatEnumLabel(relationship.type),
           },
         ]
       })
@@ -127,6 +128,7 @@ export const GraphSidePanel = () => {
               score={entity.confidence_override ?? entity.confidence_score}
               sourceCount={sourceCount}
             />
+            <VoteWidget compact targetId={entity.id} targetType="entity" />
 
             <p className="font-body text-[13px] leading-reading text-ink/75">
               {entity.description ?? 'No summary has been published for this entity yet.'}

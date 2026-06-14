@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { ROUTES } from '@/constants/routes'
+import { getErrorMessage } from '@/lib/format'
 import { useSearch } from '@/hooks/useSearch'
 import {
   createExploration,
@@ -39,13 +40,7 @@ interface DraftStep {
   focus: PickedEntity[]
 }
 
-const getErrorMessage = (error: unknown) => {
-  if (error instanceof Error) {
-    return error.message
-  }
 
-  return 'Exploration could not be saved.'
-}
 
 const EntitySearchPicker = ({ onSelect }: { onSelect: (entity: PickedEntity) => void }) => {
   const { isLoading, query, results, setQuery } = useSearch()

@@ -41,14 +41,9 @@ import {
   type SourceTier,
 } from '@/lib/api/admin'
 import { cn } from '@/lib/utils'
+import { getErrorMessage } from '@/lib/format'
 
-const getErrorMessage = (error: unknown) => {
-  if (error instanceof Error) {
-    return error.message
-  }
 
-  return 'The source action failed.'
-}
 
 const MetadataRow = ({ label, value }: { label: string; value: ReactNode }) => {
   return (

@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import { ROUTES } from '@/constants/routes'
+import { getErrorMessage } from '@/lib/format'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Check, ChevronLeft, ChevronRight, HelpCircle, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -67,9 +69,6 @@ const actionDescriptions: Record<ActionType, (s: AdminSuggestionRow) => string> 
 
 const isTerminal = (status: AdminSuggestionRow['status']) =>
   status === 'approved' || status === 'rejected'
-
-const getErrorMessage = (error: unknown) =>
-  error instanceof Error ? error.message : 'Suggestion action failed.'
 
 export default function AdminSuggestionManagerPage() {
   const queryClient = useQueryClient()
@@ -156,6 +155,14 @@ export default function AdminSuggestionManagerPage() {
         </p>
       </div>
 
+      <div className="rounded border border-0.5 border-amber-300/70 bg-amber-50 px-4 py-3 font-body text-sm text-amber-800">
+        Content flags (claims and entities) are now reviewed in the{' '}
+        <Link className="underline" to={ROUTES.ADMIN_FLAGS}>
+          Flags queue
+        </Link>
+        . This queue no longer receives new flag submissions.
+      </div>
+
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3">
         <select
@@ -184,8 +191,6 @@ export default function AdminSuggestionManagerPage() {
           <option value="">All types</option>
           <option value="new_claim">New claim</option>
           <option value="claim_correction">Claim correction</option>
-          <option value="flag_claim">Flag claim</option>
-          <option value="flag_entity">Flag entity</option>
         </select>
       </div>
 

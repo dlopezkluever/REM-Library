@@ -2,6 +2,7 @@ import type { EntityRow } from '@/lib/api/entities'
 import type { ClaimWithAuthor } from '@/lib/api/claims'
 import { ENTITY_LABELS } from '@/constants/entityTypes'
 import { formatCitation, type CitationInput, type CitationStyle } from '@/lib/citations'
+import { formatEnumLabel } from '@/lib/format'
 import type { EntityType } from '@/types/domain'
 
 export type ExportFormat = 'markdown' | 'plain'
@@ -56,7 +57,7 @@ const makeFormatter = (format: ExportFormat): Formatter => {
 }
 
 const relationshipLabel = (type: string | null): string =>
-  type ? type.replace(/_/g, ' ') : 'related'
+  type ? formatEnumLabel(type) : 'related'
 
 const formatPercent = (value: number): string =>
   `${Math.round(Math.min(Math.max(value, 0), 1) * 100)}%`

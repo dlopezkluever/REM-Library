@@ -15,17 +15,18 @@ import { Button } from '@/components/ui/button'
 import { CompareButton } from '@/components/compare/CompareButton'
 import { ExportDialog } from '@/components/export/ExportDialog'
 import { CopyLinkButton } from '@/components/common/CopyLinkButton'
+import { CommentSection } from '@/components/community/CommentSection'
+import { FlagButton } from '@/components/community/FlagButton'
+import { VoteWidget } from '@/components/community/VoteWidget'
 import { SuggestionDialog } from '@/components/suggestions/SuggestionDialog'
 import { buildEntityExport } from '@/lib/export'
 import { ENTITY_LABELS } from '@/constants/entityTypes'
 import { getClaimsForEntity } from '@/lib/api/claims'
 import { getEntityBySlug, getEntityNeighborhood } from '@/lib/api/entities'
 import { getSourceEvidenceForClaims, type SourceAnchorEvidence } from '@/lib/api/sources'
-import { truncateText } from '@/lib/format'
+import { formatEnumLabel, truncateText } from '@/lib/format'
 import type { ClaimWithAuthor } from '@/lib/api/claims'
 import type { InterpretationFrame } from '@/types/domain'
-
-const relationshipLabel = (type: string) => type.replace(/_/g, ' ')
 
 const frameLabels: Record<InterpretationFrame, string> = {
   canonical_rem: 'Canonical REM',
@@ -186,7 +187,6 @@ const ClaimSection = ({
 export default function EntityDetailPage() {
   const { slug } = useParams()
   const [suggestionOpen, setSuggestionOpen] = useState(false)
-  const [flagEntityOpen, setFlagEntityOpen] = useState(false)
 
   const entityQuery = useQuery({
     queryKey: ['entity', slug],
@@ -325,6 +325,9 @@ export default function EntityDetailPage() {
           <div className="mt-5">
             <AttestationBar score={confidence} sourceCount={sourceCount} />
           </div>
+          <div className="mt-4">
+            <VoteWidget targetId={entity.id} targetType="entity" />
+          </div>
           <div className="mt-5 flex flex-wrap items-center gap-2">
             <CompareButton slug={entity.slug} />
             <ExportDialog
@@ -358,9 +361,7 @@ export default function EntityDetailPage() {
             <Button size="sm" type="button" variant="outline" onClick={() => setSuggestionOpen(true)}>
               Suggest a claim
             </Button>
-            <Button size="sm" type="button" variant="ghost" onClick={() => setFlagEntityOpen(true)}>
-              Flag this entity
-            </Button>
+            <FlagButton targetId={entity.id} targetType="entity" />
           </div>
         </header>
 
@@ -389,7 +390,7 @@ export default function EntityDetailPage() {
                     key={connectedEntity.id}
                     name={connectedEntity.name}
                     relationshipLabel={
-                      relationship ? relationshipLabel(relationship.type) : undefined
+                      relationship ? formatEnumLabel(relationship.type) : undefined
                     }
                     slug={connectedEntity.slug}
                     type={connectedEntity.type}
@@ -480,6 +481,8 @@ export default function EntityDetailPage() {
             <p className="font-body text-[12px] text-[#666]">No sources linked yet.</p>
           ) : null}
         </section>
+
+        <CommentSection targetId={entity.id} targetType="entity" />
       </article>
 
       <aside className="hidden lg:block">
@@ -498,16 +501,6 @@ export default function EntityDetailPage() {
         title="Suggest a claim"
         type="new_claim"
         onOpenChange={setSuggestionOpen}
-      />
-      <SuggestionDialog
-        open={flagEntityOpen}
-        reasonLabel="Reason for flagging"
-        suggestionLabel="What is incorrect or disputed?"
-        targetEntityId={entity.id}
-        targetLabel={entity.name}
-        title="Flag this entity"
-        type="flag_entity"
-        onOpenChange={setFlagEntityOpen}
       />
     </div>
   )

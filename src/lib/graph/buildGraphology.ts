@@ -2,6 +2,7 @@ import { MultiDirectedGraph } from 'graphology'
 import type { EntityRow } from '@/lib/api/entities'
 import type { RelationshipRow } from '@/lib/api/relationships'
 import type { GraphAttributes, GraphEdgeAttributes, GraphNodeAttributes } from '@/lib/graph/types'
+import { formatEnumLabel } from '@/lib/format'
 
 export type MythographGraph = MultiDirectedGraph<
   GraphNodeAttributes,
@@ -19,7 +20,7 @@ const fallbackPositionForIndex = (index: number, total: number) => {
   }
 }
 
-const relationshipLabel = (type: string) => type.replace(/_/g, ' ').toUpperCase()
+const relationshipLabel = (type: string) => formatEnumLabel(type).toUpperCase()
 
 export const buildGraphology = (
   entities: EntityRow[],

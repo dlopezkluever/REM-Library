@@ -10,9 +10,7 @@ import {
   listUrlIngestionDomains,
   updateUrlIngestionDomainEnabled,
 } from '@/lib/api/admin'
-
-const getErrorMessage = (error: unknown) =>
-  error instanceof Error ? error.message : 'Domain update failed.'
+import { getErrorMessage } from '@/lib/format'
 
 export default function AdminUrlDomainsPage() {
   const queryClient = useQueryClient()
