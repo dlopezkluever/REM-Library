@@ -17,6 +17,7 @@ import {
   type AdminFlagModerationRow,
 } from '@/lib/api/admin'
 import type { FlagTargetType } from '@/lib/api/community'
+import { formatEnumLabel } from '@/lib/format'
 
 interface FlagDetailPanelProps {
   open: boolean
@@ -26,9 +27,24 @@ interface FlagDetailPanelProps {
   onOpenChange: (open: boolean) => void
 }
 
-const reasonLabel = (reason: string) => reason.replace(/_/g, ' ')
 const getErrorMessage = (error: unknown) =>
   error instanceof Error ? error.message : 'Flag moderation failed.'
+
+const getTargetAdminQueryKeys = (targetType: FlagTargetType) => {
+  if (targetType === 'claim') {
+    return [['admin', 'claims'] as const]
+  }
+
+  if (targetType === 'entity') {
+    return [['admin', 'entities'] as const]
+  }
+
+  if (targetType === 'source') {
+    return [['admin', 'source-list'] as const, ['admin', 'sources'] as const]
+  }
+
+  return [['admin', 'comments'] as const]
+}
 
 export const FlagDetailPanel = ({
   open,
@@ -62,9 +78,11 @@ export const FlagDetailPanel = ({
     onSuccess: async () => {
       setFlagErrors({})
       await queryClient.invalidateQueries({ queryKey: ['admin', 'flags'] })
-      await queryClient.invalidateQueries({
-        queryKey: ['admin', targetType === 'claim' ? 'claims' : 'entities'],
-      })
+      await Promise.all(
+        getTargetAdminQueryKeys(targetType).map((queryKey) =>
+          queryClient.invalidateQueries({ queryKey })
+        )
+      )
       await queryClient.invalidateQueries({ queryKey: ['admin', 'review-queue'] })
     },
   })
@@ -104,7 +122,7 @@ export const FlagDetailPanel = ({
             <div key={flag.id} className="rounded border-0.5 border-black/10 bg-white p-4">
               <div className="mb-2 flex flex-wrap items-center gap-2">
                 <Badge className="border-terracotta/25 bg-terracotta-light text-terracotta-dark">
-                  {reasonLabel(flag.reason)}
+                  {formatEnumLabel(flag.reason)}
                 </Badge>
                 <span className="font-body text-xs text-[#777]">
                   {new Date(flag.created_at).toLocaleString()}
