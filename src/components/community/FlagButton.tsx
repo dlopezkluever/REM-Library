@@ -36,6 +36,22 @@ const getFlagError = (error: unknown) => {
   return 'Flag could not be submitted.'
 }
 
+const getTargetAdminQueryKeys = (targetType: FlagTargetType) => {
+  if (targetType === 'claim') {
+    return [['admin', 'claims'] as const]
+  }
+
+  if (targetType === 'entity') {
+    return [['admin', 'entities'] as const]
+  }
+
+  if (targetType === 'source') {
+    return [['admin', 'source-list'] as const, ['admin', 'sources'] as const]
+  }
+
+  return [['admin', 'comments'] as const]
+}
+
 export const FlagButton = ({ targetId, targetType }: FlagButtonProps) => {
   const { role, user } = useAuth()
   const queryClient = useQueryClient()
@@ -65,7 +81,13 @@ export const FlagButton = ({ targetId, targetType }: FlagButtonProps) => {
       setReason('factually_incorrect')
       setNotes('')
       await queryClient.invalidateQueries({ queryKey: flagQueryKey })
-      await queryClient.invalidateQueries({ queryKey: ['admin'] })
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'flags'] })
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'review-queue'] })
+      await Promise.all(
+        getTargetAdminQueryKeys(targetType).map((queryKey) =>
+          queryClient.invalidateQueries({ queryKey })
+        )
+      )
     },
   })
 
