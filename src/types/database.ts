@@ -802,9 +802,183 @@ export type Database = {
           },
         ]
       }
+      comments: {
+        Row: {
+          author_id: string
+          body: string
+          created_at: string
+          id: string
+          parent_id: string | null
+          reviewed_at: string | null
+          reviewer_id: string | null
+          reviewer_note: string | null
+          status: string
+          target_id: string
+          target_type: string
+          updated_at: string
+        }
+        Insert: {
+          author_id: string
+          body: string
+          created_at?: string
+          id?: string
+          parent_id?: string | null
+          reviewed_at?: string | null
+          reviewer_id?: string | null
+          reviewer_note?: string | null
+          status?: string
+          target_id: string
+          target_type: string
+          updated_at?: string
+        }
+        Update: {
+          author_id?: string
+          body?: string
+          created_at?: string
+          id?: string
+          parent_id?: string | null
+          reviewed_at?: string | null
+          reviewer_id?: string | null
+          reviewer_note?: string | null
+          status?: string
+          target_id?: string
+          target_type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'comments_author_id_fkey'
+            columns: ['author_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'comments_parent_id_fkey'
+            columns: ['parent_id']
+            isOneToOne: false
+            referencedRelation: 'comments'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'comments_reviewer_id_fkey'
+            columns: ['reviewer_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      content_flags: {
+        Row: {
+          created_at: string
+          id: string
+          notes: string | null
+          reason: string
+          reporter_id: string
+          resolved_at: string | null
+          resolved_by: string | null
+          status: string
+          target_id: string
+          target_type: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          notes?: string | null
+          reason: string
+          reporter_id: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+          target_id: string
+          target_type: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          notes?: string | null
+          reason?: string
+          reporter_id?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+          target_id?: string
+          target_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'content_flags_reporter_id_fkey'
+            columns: ['reporter_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'content_flags_resolved_by_fkey'
+            columns: ['resolved_by']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      content_votes: {
+        Row: {
+          created_at: string
+          id: string
+          target_id: string
+          target_type: string
+          user_id: string
+          value: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          target_id: string
+          target_type: string
+          user_id: string
+          value: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          target_id?: string
+          target_type?: string
+          user_id?: string
+          value?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'content_votes_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+        ]
+      }
     }
     Views: {
-      [_ in never]: never
+      community_scores: {
+        Row: {
+          community_score: number | null
+          downvote_count: number | null
+          target_id: string | null
+          target_type: string | null
+          total_votes: number | null
+          upvote_count: number | null
+        }
+        Relationships: []
+      }
+      open_flag_counts: {
+        Row: {
+          flag_count: number | null
+          target_id: string | null
+          target_type: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       approve_suggestion: {
@@ -836,6 +1010,30 @@ export type Database = {
         }[]
       }
       get_admin_content_stats: { Args: never; Returns: Json }
+      has_community_access: { Args: never; Returns: boolean }
+      get_approved_comments: {
+        Args: { p_target_id: string; p_target_type: string }
+        Returns: {
+          author_display_name: string | null
+          author_id: string
+          author_role: Database['public']['Enums']['admin_role']
+          body: string
+          created_at: string
+          id: string
+          parent_id: string | null
+          target_id: string
+          target_type: string
+          updated_at: string
+        }[]
+      }
+      get_review_queue_signals: {
+        Args: never
+        Returns: {
+          community_score: number
+          flag_count: number
+          source_id: string
+        }[]
+      }
       get_admin_entities_page: {
         Args: {
           page_limit?: number
