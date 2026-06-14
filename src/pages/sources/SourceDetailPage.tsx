@@ -175,10 +175,10 @@ export default function SourceDetailPage() {
             <CopyLinkButton />
             <FlagButton targetId={source.id} targetType="source" />
           </div>
-          <div className="mt-4">
-            <VoteWidget targetId={source.id} targetType="source" />
-          </div>
         </header>
+        <div className="border-b-0.5 border-black/10 py-4">
+          <VoteWidget targetId={source.id} targetType="source" />
+        </div>
 
         {source.format === 'audio' || source.format === 'video' ? (
           <section className="py-6">

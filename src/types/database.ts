@@ -1,5 +1,18 @@
 ﻿export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[]
 
+type CommunityTargetType = 'entity' | 'claim' | 'source'
+type FlagTargetType = CommunityTargetType | 'comment'
+type CommentStatus = 'pending' | 'approved' | 'rejected' | 'needs_clarification'
+type ContentFlagReason =
+  | 'factually_incorrect'
+  | 'spam'
+  | 'inappropriate'
+  | 'duplicate'
+  | 'needs_source'
+  | 'other'
+type ContentFlagStatus = 'open' | 'resolved' | 'dismissed'
+type ContentVoteValue = -1 | 1
+
 export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
@@ -812,9 +825,9 @@ export type Database = {
           reviewed_at: string | null
           reviewer_id: string | null
           reviewer_note: string | null
-          status: string
+          status: CommentStatus
           target_id: string
-          target_type: string
+          target_type: CommunityTargetType
           updated_at: string
         }
         Insert: {
@@ -826,9 +839,9 @@ export type Database = {
           reviewed_at?: string | null
           reviewer_id?: string | null
           reviewer_note?: string | null
-          status?: string
+          status?: CommentStatus
           target_id: string
-          target_type: string
+          target_type: CommunityTargetType
           updated_at?: string
         }
         Update: {
@@ -840,9 +853,9 @@ export type Database = {
           reviewed_at?: string | null
           reviewer_id?: string | null
           reviewer_note?: string | null
-          status?: string
+          status?: CommentStatus
           target_id?: string
-          target_type?: string
+          target_type?: CommunityTargetType
           updated_at?: string
         }
         Relationships: [
@@ -874,37 +887,37 @@ export type Database = {
           created_at: string
           id: string
           notes: string | null
-          reason: string
+          reason: ContentFlagReason
           reporter_id: string
           resolved_at: string | null
           resolved_by: string | null
-          status: string
+          status: ContentFlagStatus
           target_id: string
-          target_type: string
+          target_type: FlagTargetType
         }
         Insert: {
           created_at?: string
           id?: string
           notes?: string | null
-          reason: string
+          reason: ContentFlagReason
           reporter_id: string
           resolved_at?: string | null
           resolved_by?: string | null
-          status?: string
+          status?: ContentFlagStatus
           target_id: string
-          target_type: string
+          target_type: FlagTargetType
         }
         Update: {
           created_at?: string
           id?: string
           notes?: string | null
-          reason?: string
+          reason?: ContentFlagReason
           reporter_id?: string
           resolved_at?: string | null
           resolved_by?: string | null
-          status?: string
+          status?: ContentFlagStatus
           target_id?: string
-          target_type?: string
+          target_type?: FlagTargetType
         }
         Relationships: [
           {
@@ -928,25 +941,25 @@ export type Database = {
           created_at: string
           id: string
           target_id: string
-          target_type: string
+          target_type: CommunityTargetType
           user_id: string
-          value: number
+          value: ContentVoteValue
         }
         Insert: {
           created_at?: string
           id?: string
           target_id: string
-          target_type: string
+          target_type: CommunityTargetType
           user_id: string
-          value: number
+          value: ContentVoteValue
         }
         Update: {
           created_at?: string
           id?: string
           target_id?: string
-          target_type?: string
+          target_type?: CommunityTargetType
           user_id?: string
-          value?: number
+          value?: ContentVoteValue
         }
         Relationships: [
           {
@@ -965,7 +978,7 @@ export type Database = {
           community_score: number | null
           downvote_count: number | null
           target_id: string | null
-          target_type: string | null
+          target_type: CommunityTargetType | null
           total_votes: number | null
           upvote_count: number | null
         }
@@ -975,7 +988,7 @@ export type Database = {
         Row: {
           flag_count: number | null
           target_id: string | null
-          target_type: string | null
+          target_type: FlagTargetType | null
         }
         Relationships: []
       }
@@ -1022,7 +1035,7 @@ export type Database = {
           id: string
           parent_id: string | null
           target_id: string
-          target_type: string
+          target_type: CommunityTargetType
           updated_at: string
         }[]
       }
@@ -1033,6 +1046,10 @@ export type Database = {
           flag_count: number
           source_id: string
         }[]
+      }
+      update_own_comment_body: {
+        Args: { p_body: string; p_comment_id: string }
+        Returns: Database['public']['Tables']['comments']['Row']
       }
       get_admin_entities_page: {
         Args: {
@@ -1084,8 +1101,10 @@ export type Database = {
         }[]
       }
       get_pending_review_source_summaries: {
-        Args: { page_limit?: number; page_offset?: number }
+        Args: { page_limit?: number; page_offset?: number; sort_mode?: string }
         Returns: {
+          community_score: number
+          flag_count: number
           oldest_extraction_at: string
           pending_extraction_count: number
           pending_item_count: number
