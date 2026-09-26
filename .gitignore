@@ -40,4 +40,6 @@ vite.config.d.ts
 # Claude Code memory
 .claude/
 
+# Other
 ignore/
+sources/
